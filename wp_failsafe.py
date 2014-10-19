@@ -36,8 +36,11 @@ def mode_callback(name):
     global shouldQuit #since this is on the main MAVProxy thread, not the independent thread we've got
     print "System status: %d" % ( v.system_status)
     if (v.system_status == 5):
-        print "Detected loss of GCS link!"
+        print "Detected loss of GCS link, shifting to AUTO mode"
+        #v.mode = VehicleMode("A")
         shouldQuit = True
+
+RSSI_LIMIT=10
 
 # First get an instance of the API endpoint
 api = local_connect()
@@ -45,13 +48,24 @@ api = local_connect()
 v = api.get_vehicles()[0]
 
 print "WP_Failsafe started, watching for GCS lost link"
-v.add_attribute_observer("mode", mode_callback)
+#v.add_attribute_observer("mode", mode_callback)
 
 while not (threading.current_thread().exit or shouldQuit):   
     #until we are signalled to exit, 
     #everything is run from the callback
+    if (v.rssi < RSSI_LIMIT):
+        print "Detected loss of RC radio link, aborting flight"
+        v.mode = VehicleMode("FBWA")
+        v.channel_override = { "2" : 1}
+        #Command zero throttle (as small as possible without disabling the override
+        v.flush()
+    else:
+        #Clear the overrides, set manual mode
+        v.mode = VehicleMode("MANUAL")
+        v.channel_override = { "0" : 0, "1" : 0, "2" : 0, "3" : 0, "4" : 0, "5" : 0, "6" : 0, "7" : 0};
+        v.flush()
     time.sleep(1)
 
-v.remove_attribute_observer("mode", mode_callback)
+#v.remove_attribute_observer("mode", mode_callback)
 print "Unregistered callback, exiting"
 
