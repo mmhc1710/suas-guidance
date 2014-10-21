@@ -1,20 +1,12 @@
-#
-# This is a small example of the python drone API
-# Usage:
-# * mavproxy.py
-# * module load api
-# * api start small-demo.py
-# line for api start /home/nichols/suas-guidance/controller_main_nichols.py
+#Controller to track a 3d path for a suas
+#Usage: (in droneproxy) api start /home/nichols/suas-guidance/controller_main_nichols.py
+#Authors: Tevis Nichols, Will Silva, Paul Guerrie, Steve McGuire, Aaron Buysse, Matthew Aitken
 from droneapi.lib import VehicleMode, Location
 from pymavlink import mavutil
 import math
 import time
 import numpy as np
 from numpy  import *
-
-def mavrx_debug_handler(message):
-    """A demo of receiving raw mavlink messages"""
-    print "Received", message
 
 def cmd_saturate(cmd,cmd_max,cmd_min):
 	if cmd > cmd_max:
@@ -23,11 +15,9 @@ def cmd_saturate(cmd,cmd_max,cmd_min):
 		cmd = cmd_min
 	return cmd
 
-def lla2flat(lat,lon,alt,lat0,lon0,alt0): #convert postion at lat lon alt
-    # to flat ENU coordinates centered at lat0 lon0 alt0
-    
-    #import numpy as np
-    
+ #convert postion at lat lon alt to flat ENU coordinates centered at lat0 lon0 alt0
+def lla2flat(lat,lon,alt,lat0,lon0,alt0):
+  
     a = 6378137.0
     f = 1/298.257223563
     #b = a*(1-f)
@@ -69,33 +59,22 @@ api = local_connect()
 # get our vehicle - when running with mavproxy it only knows about one vehicle (for now)
 v = api.get_vehicles()[0]
 
-# Print out some interesting stats about the vehicle
-print "Mode: %s" % v.mode
-print "Location: %s" % v.location
-print "Attitude: %s" % v.attitude
-print "Velocity: %s" % v.velocity
-print "GPS: %s" % v.gps_0
-print "Armed: %s" % v.armed
-print "groundspeed: %s" % v.groundspeed
-print "airspeed: %s" % v.airspeed
-
-print("velocity is:")
-print(v.velocity)
-
-# Download the vehicle waypoints
-cmds = v.commands
-cmds.download()
-cmds.wait_valid()
-print "Home WP: %s" % cmds[0]
-print "Current dest: %s" % cmds.next
-
-print "Disarming..."
-v.armed = False
-v.flush()
-
-print "Arming..."
-v.armed = True
-v.flush()
+#Set parameters
+v.parameters['RC1_MAX'] = 2000
+v.parameters['RC1_MIN'] = 1000
+v.parameters['RC2_MAX'] = 2000
+v.parameters['RC2_MIN'] = 1000
+v.parameters['RC3_MAX'] = 2000
+v.parameters['RC3_MIN'] = 1000
+v.parameters['LIM_PITCH_MIN'] = -2000
+v.parameters['LIM_PITCH_MAX'] = 2500
+v.parameters['LIM_ROLL_CD'] = 6500
+v.parameters['RLL2SRV_D'] = 0.137
+v.parameters['RLL2SRV_I'] = 0.133
+v.parameters['RLL2SRV_P'] = 1.961
+v.parameters['PTCH2SRV_D'] = 0.232
+v.parameters['PTCH2SRV_I'] = 0.207
+v.parameters['PTCH2SRV_P'] = 3.321
 
 ###CONTROLLER VALUES###
 
@@ -139,7 +118,6 @@ RC2_MAX = v.parameters['RC2_MAX']
 RC2_MIN = v.parameters['RC2_MIN']
 RC2_ZERO = 1500;
 
-
 RC3_MAX = v.parameters['RC3_MAX']
 RC3_MIN = v.parameters['RC3_MIN']
 RC3_ZERO = 1500;
@@ -156,7 +134,6 @@ v = api.get_vehicles()[0]
 prev = time.time()
 alt_int_err = 0
 
-
 while (1):
 
 	###GPS COORDINATE TRANSFORM###
@@ -171,7 +148,6 @@ while (1):
 	
 	###PATH FOLLOWING CONTROLLER###	
 	
-
 	turn_rate_des = 0 #ENU turn rate (positive CCW)
 	alt_target = start_alt + 200 #ENU alt (positive up)
 	speed_desired = 22
@@ -200,7 +176,7 @@ while (1):
 
 	#convert bank angle to degrees
 	bankangle_d_ff = bankangle_r * 180/math.pi
-	print bankangle_d_ff
+	#print bankangle_d_ff
 
 	#add proportional term
 	bankangle_d = bankangle_d_ff + KP_roll*turn_rate_err
@@ -293,15 +269,7 @@ while (1):
 
 	#print "Overriding RC channels..."
 	v.channel_override = { "1" : RC1_cmd, "2" : RC2_cmd, "3" : RC3_cmd }
-	#v.channel_override = {"3" : 1000 }
 	v.flush()
-
-	#time.sleep(3)
-
-	#v.channel_override = { "1" : 1500, "2" : 1500, "3" : 1500 }
-	#v.flush()
-
-	#time.sleep(10)
 
 
 print "Current overrides are:", v.channel_override
@@ -309,12 +277,12 @@ print "Current overrides are:", v.channel_override
 print "RC readback:", v.channel_readback
 
 # To Cancel override send 0 to the channels
-#print "Cancelling override"
-#v.channel_override = { "1" : 0, "4" : 0 }
-#v.flush()
+print "Cancelling override"
+v.channel_override = { "1" : 0, "4" : 0 }
+v.flush()
 
 # Now change the vehicle into auto mode
-#v.mode = VehicleMode("AUTO")
+v.mode = VehicleMode("AUTO")
 
 # Always call flush to guarantee that previous writes to the vehicle have taken place
 v.flush()
