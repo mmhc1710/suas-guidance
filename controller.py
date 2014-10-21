@@ -64,7 +64,7 @@ pitch_trim = 0.989 #deg
 throttle_trim = 1230 #RC channel
 start_alt = 1680 #m
 g = 9.81 #m/s^2
-speed_desired = 22
+speed_desired = 22 #m/s
 
 #desired coordinate center (datum)
 lat0 = -105.246
@@ -118,17 +118,17 @@ while True:
 	Y = flat[1]
 	Z = flat[2]
 	if (v.velocity[0] > 0) or (v.velocity[0] < 0): #may want to set this threshold higher at some point
-		Gamma = np.arctan(v.velocity[1]/v.velocity[0]) #assuming zero path angle is aligned with x
+		Chi = np.arctan(v.velocity[1]/v.velocity[0]) #assuming zero path angle is aligned with x
 	else:
-		Gamma = 0;
+		Chi = 0;
 	############################################################################################
 
 	###PATH FOLLOWING LOGIC (L1 GUIDANCE)############################################
-	[turn_rate_des,alt_target] = Guide.Guide(Pathx,Pathy,Pathz,X,Y,Z,0,v.airspeed) #NEED TO ADD CHI!!
-
+	[turn_rate_des,z_target] = Guide.Guide(Pathx,Pathy,Pathz,X,Y,Z,Chi,speed_desired) 
+	alt_target = alt0 - z_target #altitude positive but z down
 	#for holding turn rate/altitude, use lines below instead
-	#turn_rate_des = 0 #ENU turn rate (positive CCW)
-	#alt_target = start_alt + 200 #ENU alt (positive up)
+	turn_rate_des = 0 #ENU turn rate (positive CCW)
+	alt_target = start_alt + 200 #ENU alt (positive up)
 	#############################################################################################
 
 	###TURN RATE CONTROLLER######################################################################
@@ -139,19 +139,19 @@ while True:
 
 	#a = turn_rate_des*v.airspeed 
 
-	bankangle_r = np.arctan((-turn_rate_des*v.airspeed)/g) 
+	bankangle_r = np.arctan((turn_rate_des*v.airspeed)/g) 
 	theta = v.attitude.pitch
 	phi = v.attitude.roll
 	psi = v.attitude.yaw
 	Rib = array([[cos(theta)*cos(psi), cos(theta)*sin(psi), -sin(theta)], [sin(phi)*sin(theta)*cos(psi) - cos(phi)*sin(psi), sin(phi)*sin(theta)*sin(psi) + cos(phi)*cos(psi), sin(phi)*cos(theta)], [cos(phi)*sin(theta)*cos(psi) + sin(phi)*sin(psi), cos(phi)*sin(theta)*sin(psi) - sin(phi)*cos(psi), cos(phi)*cos(theta)]])
 
 	Rbi = np.transpose(Rib)
-	#omega = array([v.rates.rollspeed,v.rates.pitchspeed,v.rates.yawspeed]).reshape(3,1) #need to know how to get rates
-	#euler_rate = Rbi*omega
-	#turn_rate = -euler_rate[2] #note negative sign to switch to ENU coordinates
-	#turn_rate_err = turn_rate - turn_rate_des
+	omega = array([v.rollspeed,v.pitchspeed,v.yawspeed]).reshape(3,1) #need to know how to get rates
+	euler_rate = Rbi*omega
+	turn_rate = euler_rate[2] #note negative sign to switch to ENU coordinates NOW STAYING IN NED
+	turn_rate_err = turn_rate - turn_rate_des
 	# positive roll -> negative turn rate
-	turn_rate_err = 0
+	#turn_rate_err = 0
 
 	#convert bank angle to degrees
 	bankangle_d_ff = bankangle_r * 180/math.pi
@@ -175,6 +175,7 @@ while True:
 
 	alt_int_err += time_step*( v.location.alt - (alt_target))
 
+
 	#print 'alt err'
 	#print v.location.alt - (1680+alt_target)
 	#print 'integrator'
@@ -192,20 +193,21 @@ while True:
 	#feed forward term
 	#feed forward position
 	dt = 0.01
-	X_ff = X + v.airspeed*np.cos(Gamma)*dt
-	Y_ff = Y + v.airspeed*np.sin(Gamma)*dt
+	X_ff = X + v.airspeed*np.cos(Chi)*dt
+	Y_ff = Y + v.airspeed*np.sin(Chi)*dt
 	Z_ff = Z + v.velocity[0]*dt
+	Chi_ff = Chi + turn_rate*dt
 	#t_ff = time.time() + dt #feed forward time (if needed)
 
 	#call control on FF position
 
-	alt_des_ff = alt_target
+	[turn_rate_ff,alt_des_ff] = Guide.Guide(Pathx,Pathy,Pathz,X_ff,Y_ff,Z_ff,Chi_ff,speed_desired)
 
 	#determine climb rate needed
 	climb_des = (alt_des_ff - alt_target)/dt
 
 	# add all terms for altitude control
-	pitch_cmd = KP_pitch * ( alt_target - v.location.alt) - KI_pitch*alt_int_err - KD_pitch * (v.velocity[2] - climb_des)- pitch_trim #system NEU?!?! # - KPR_pitch*v.rates.pitchspeed
+	pitch_cmd = KP_pitch * ( alt_target - v.location.alt) - KI_pitch*alt_int_err - KD_pitch * (v.velocity[2] - climb_des)- pitch_trim - KPR_pitch*v.pitchspeed #system NEU?!?! # 
 	#print 'p cmd'
 	#print pitch_cmd
 	#print 'proportional'
