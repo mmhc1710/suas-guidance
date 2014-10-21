@@ -1,113 +1,72 @@
-#
-# This is a small example of the python drone API
-# Usage:
-# * mavproxy.py
-# * module load api
-# * api start small-demo.py
-# line for api start /home/nichols/suas-guidance/controller_main_nichols.py
+#Controller to track a 3d path for a suas
+#Usage: Place suas-guidance directory in the ardupilot/ArduPlane directory
+#Usage (continued): within MAVProxy console, "api start ./suas-guidance/controller.py"
+#Authors: Tevis Nichols, Will Silva, Paul Guerrie, Steve McGuire, Aaron Buysse, Matthew Aitken
+#Last modified: 10/20/2014
+import sys, os
+currentdir = os.path.dirname(os.path.realpath("__file__")) + '/suas-guidance/'
+sys.path.append(currentdir)
 from droneapi.lib import VehicleMode, Location
 from pymavlink import mavutil
 import math
 import time
 import numpy as np
 from numpy  import *
+import csv
+import Guide #L1 logic
+from coordtrans import lla2flat #GPS to cartesian
+from cmd_saturate import cmd_saturate #limits RC commands to saturation limits
 
-def mavrx_debug_handler(message):
-    """A demo of receiving raw mavlink messages"""
-    print "Received", message
-
-def cmd_saturate(cmd,cmd_max,cmd_min):
-	if cmd > cmd_max:
-		cmd = cmd_max
-	elif cmd < cmd_min:
-		cmd = cmd_min
-	return cmd
-
-def lla2flat(lat,lon,alt,lat0,lon0,alt0): #convert postion at lat lon alt
-    # to flat ENU coordinates centered at lat0 lon0 alt0
-    
-    #import numpy as np
-    
-    a = 6378137.0
-    f = 1/298.257223563
-    #b = a*(1-f)
-    #pi = pi;
-    
-    e = sqrt(f*(2-f))
-    
-    N = a/(sqrt(1-e**2*(sin(lat))**2))
-    N0 = a/(sqrt(1-e**2*(sin(lat))**2))
-    
-    x_ec =(alt + N)*cos(lat)*cos(lon) 
-    y_ec =(alt + N)*cos(lat)*sin(lon)
-    z_ec =(alt + (1-e**2)*N)*sin(lat)
-    
-    x_ec0 =(alt0 + N0)*cos(lat0)*cos(lon0) 
-    y_ec0 =(alt0 + N0)*cos(lat0)*sin(lon0)
-    z_ec0 =(alt0 + (1-e**2)*N)*sin(lat0)
-    
-    X_ec = array([x_ec,y_ec,z_ec]).reshape(3,1)
-    X0_ec = array([x_ec0,y_ec0,z_ec0]).reshape(3,1)
-    
-    Xp = X_ec - X0_ec
-    
-    Rte = array([[-sin(lon0), cos(lon0),0],
-                 [-cos(lon0)*sin(lat0), -sin(lat0)*sin(lon0), cos(lat0)],
-                [cos(lat0)*cos(lon0), cos(lat0)*sin(lon0), sin(lat0)]])
- 
-    X_flat = dot(Rte,Xp)
-    
-    x = X_flat[0][0]
-    y = X_flat[1][0]
-    z = X_flat[2][0]
-    return (x,y,z)
-
-
-# First get an instance of the API endpoint
+###CONNECT TO AIRCRAFT (SITL)##########################################################
 api = local_connect()
 
-# get our vehicle - when running with mavproxy it only knows about one vehicle (for now)
+#establish object link to aircraft, v
 v = api.get_vehicles()[0]
+#######################################################################################
 
-# Print out some interesting stats about the vehicle
-print "Mode: %s" % v.mode
-print "Location: %s" % v.location
-print "Attitude: %s" % v.attitude
-print "Velocity: %s" % v.velocity
-print "GPS: %s" % v.gps_0
-print "Armed: %s" % v.armed
-print "groundspeed: %s" % v.groundspeed
-print "airspeed: %s" % v.airspeed
+###SET AIRCRAFT LIMITS#################################################################
+v.parameters['RC1_MAX'] = 2000
+v.parameters['RC1_MIN'] = 1000
+v.parameters['RC2_MAX'] = 2000
+v.parameters['RC2_MIN'] = 1000
+v.parameters['RC3_MAX'] = 2000
+v.parameters['RC3_MIN'] = 1000
+v.parameters['LIM_PITCH_MIN'] = -2000
+v.parameters['LIM_PITCH_MAX'] = 2500
+v.parameters['LIM_ROLL_CD'] = 6500
+v.parameters['RLL2SRV_D'] = 0.137
+v.parameters['RLL2SRV_I'] = 0.133
+v.parameters['RLL2SRV_P'] = 1.961
+v.parameters['PTCH2SRV_D'] = 0.232
+v.parameters['PTCH2SRV_I'] = 0.207
+v.parameters['PTCH2SRV_P'] = 3.321
+########################################################################################
 
-print("velocity is:")
-print(v.velocity)
+###IMPORT CSV PATH######################################################################
+#Read In Path
+Reader = csv.reader(open(currentdir + 'tilted_ellipse.csv', 'rv'))#create reader object
+ind = 0#initialize ind, Pathx, Pathy and Pathz
+Pathx = []
+Pathy = []
+Pathz = []
+#for all the rows in the csv file, assign each datum to its appropriate variable
+for row in Reader:
+	Pathx.append(float(row[0]))
+	Pathy.append(float(row[1]))
+	Pathz.append(float(row[2]))
+	ind = ind + 1
+########################################################################################
 
-# Download the vehicle waypoints
-cmds = v.commands
-cmds.download()
-cmds.wait_valid()
-print "Home WP: %s" % cmds[0]
-print "Current dest: %s" % cmds.next
-
-print "Disarming..."
-v.armed = False
-v.flush()
-
-print "Arming..."
-v.armed = True
-v.flush()
-
-###CONTROLLER VALUES###
+###RUN-TIME CONSTANTS###################################################################
 
 #constants
-
 pitch_trim = 0.989 #deg
 throttle_trim = 1230 #RC channel
 start_alt = 1680 #m
 g = 9.81 #m/s^2
+speed_desired = 22
 
-#desired coordinate center
-
+#desired coordinate center (datum)
 lat0 = -105.246
 lon0 = 40.1358
 alt0 = 1680
@@ -127,10 +86,6 @@ KP_roll = 60.0 #deg/(rad/s)
 #altitude integrator wind-up limit
 alt_int_max = 140
 
-# Now change the vehicle into fbwa mode
-print "Switching to FBWA Mode"
-v.mode = VehicleMode("FBWA")
-
 RC1_MAX = v.parameters['RC1_MAX']
 RC1_MIN = v.parameters['RC1_MIN']
 RC1_ZERO = 1500;
@@ -139,27 +94,25 @@ RC2_MAX = v.parameters['RC2_MAX']
 RC2_MIN = v.parameters['RC2_MIN']
 RC2_ZERO = 1500;
 
-
 RC3_MAX = v.parameters['RC3_MAX']
 RC3_MIN = v.parameters['RC3_MIN']
 RC3_ZERO = 1500;
 
-LIM_PITCH_MIN  = v.parameters['LIM_PITCH_MIN']
-LIM_PITCH_MAX  = v.parameters['LIM_PITCH_MAX']
+LIM_PITCH_MIN = v.parameters['LIM_PITCH_MIN']
+LIM_PITCH_MAX = v.parameters['LIM_PITCH_MAX']
 
 LIM_ROLL  = v.parameters['LIM_ROLL_CD']
-
-# get our vehicle state
-v = api.get_vehicles()[0]
 
 # initialize integrator
 prev = time.time()
 alt_int_err = 0
 
+# Now change the vehicle into fbwa mode
+print "Switching to FBWA Mode"
+v.mode = VehicleMode("FBWA")
 
-while (1):
-
-	###GPS COORDINATE TRANSFORM###
+while True:
+	###GPS COORDINATE TRANSFORM#################################################################
 	flat = lla2flat(v.location.lat,v.location.lon,v.location.alt,lat0,lon0,alt0)
 	X = flat[0]
 	Y = flat[1]
@@ -168,23 +121,25 @@ while (1):
 		Gamma = np.arctan(v.velocity[1]/v.velocity[0]) #assuming zero path angle is aligned with x
 	else:
 		Gamma = 0;
-	
-	###PATH FOLLOWING CONTROLLER###	
-	
+	############################################################################################
 
-	turn_rate_des = 0 #ENU turn rate (positive CCW)
-	alt_target = start_alt + 200 #ENU alt (positive up)
-	speed_desired = 22
+	###PATH FOLLOWING LOGIC (L1 GUIDANCE)############################################
+	[turn_rate_des,alt_target] = Guide.Guide(Pathx,Pathy,Pathz,X,Y,Z,0,v.airspeed) #NEED TO ADD CHI!!
 
-	###TURN RATE CONTROLLER###
+	#for holding turn rate/altitude, use lines below instead
+	#turn_rate_des = 0 #ENU turn rate (positive CCW)
+	#alt_target = start_alt + 200 #ENU alt (positive up)
+	#############################################################################################
+
+	###TURN RATE CONTROLLER######################################################################
 
 	#calculate bank angle required for radius at a certain airspeed
 
 	#TODO would like to know angular rates (where are these in v?) in order to close turn rate 		control loop and add pitch rate damping to altitude control
 
 	#a = turn_rate_des*v.airspeed 
-	
-	bankangle_r = np.arctan((-turn_rate_des*v.airspeed)/g) #assumes turn rate in rad/s, negative sign to account for turn rate being expressed in ENU
+
+	bankangle_r = np.arctan((-turn_rate_des*v.airspeed)/g) 
 	theta = v.attitude.pitch
 	phi = v.attitude.roll
 	psi = v.attitude.yaw
@@ -200,7 +155,7 @@ while (1):
 
 	#convert bank angle to degrees
 	bankangle_d_ff = bankangle_r * 180/math.pi
-	print bankangle_d_ff
+	#print bankangle_d_ff
 
 	#add proportional term
 	bankangle_d = bankangle_d_ff + KP_roll*turn_rate_err
@@ -209,8 +164,9 @@ while (1):
 	bankangle_stick = (50*(RC1_MAX - RC1_MIN)/(LIM_ROLL))*bankangle_d + RC1_ZERO
 
 	RC1_cmd = bankangle_stick
+	#############################################################################################
 
-	###Altitude Controller (PID with climb rate feed forward)###
+	###ALTITUDE CONTROLLER (PID with climb rate feed forward)####################################
 
 	time_step = time.time() - prev
 	#print 'time step'
@@ -218,7 +174,7 @@ while (1):
 	prev = time.time()
 
 	alt_int_err += time_step*( v.location.alt - (alt_target))
-	
+
 	#print 'alt err'
 	#print v.location.alt - (1680+alt_target)
 	#print 'integrator'
@@ -232,7 +188,7 @@ while (1):
 		alt_int_err = -alt_int_max
 	#print 'alt target'
 	#print 1680+alt_target
-	
+
 	#feed forward term
 	#feed forward position
 	dt = 0.01
@@ -240,9 +196,9 @@ while (1):
 	Y_ff = Y + v.airspeed*np.sin(Gamma)*dt
 	Z_ff = Z + v.velocity[0]*dt
 	#t_ff = time.time() + dt #feed forward time (if needed)
-	
+
 	#call control on FF position
-	
+
 	alt_des_ff = alt_target
 
 	#determine climb rate needed
@@ -267,9 +223,9 @@ while (1):
 		RC2_cmd = -pitch_cmd * (RC2_MAX - RC2_ZERO)/(-LIM_PITCH_MIN)*100 + RC2_ZERO
 	else:
 		RC2_cmd = RC2_ZERO
+	#############################################################################################
 
-
-	###Speed Controller (P with feed forward for climb)###
+	###SPEED CONTROLLER (P with feed forward for climb)##########################################
 
 	#as_acc = (v.airspeed - vel_prev)/time_step
 	#print as_acc
@@ -281,40 +237,13 @@ while (1):
 
 	###Convert throttle_cmd to RC3 value###
 	RC3_cmd = throttle_cmd * 10 + throttle_trim
-	#print RC1_cmd
-	#print RC2_cmd
-	#print RC3_cmd
+	#############################################################################################
 
 	#saturation to avoid "error: ushort format requires 0 <= number <= USHRT_MAX"
-
 	RC1_cmd = cmd_saturate(RC1_cmd,RC1_MAX,RC1_MIN)
 	RC2_cmd = cmd_saturate(RC2_cmd,RC2_MAX,RC2_MIN)
 	RC3_cmd = cmd_saturate(RC3_cmd,RC3_MAX,RC3_MIN)
 
 	#print "Overriding RC channels..."
 	v.channel_override = { "1" : RC1_cmd, "2" : RC2_cmd, "3" : RC3_cmd }
-	#v.channel_override = {"3" : 1000 }
 	v.flush()
-
-	#time.sleep(3)
-
-	#v.channel_override = { "1" : 1500, "2" : 1500, "3" : 1500 }
-	#v.flush()
-
-	#time.sleep(10)
-
-
-print "Current overrides are:", v.channel_override
-
-print "RC readback:", v.channel_readback
-
-# To Cancel override send 0 to the channels
-#print "Cancelling override"
-#v.channel_override = { "1" : 0, "4" : 0 }
-#v.flush()
-
-# Now change the vehicle into auto mode
-#v.mode = VehicleMode("AUTO")
-
-# Always call flush to guarantee that previous writes to the vehicle have taken place
-v.flush()
