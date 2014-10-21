@@ -3,7 +3,7 @@
 
 \title{ASEM 5519: Aerorobotics \\ Project 1, Phase 1}
 \author{Matthew Aitken \and Aaron Buysse \and Paul Guerrie \and Steve McGuire
-\and Tevis Nichols \and William Silva}
+\and Tevis Nichols \and Will Silva}
 \begin{document}
 \maketitle
 \begin{abstract}
@@ -18,8 +18,11 @@ Park et al do not include a means of providing altitude control. As part of the 
 \section{MATLAB Simulation Results}
 \section{Architecture Block Diagrams}
 \subsection{Processing Breakdown}
+\subsection{Algorithm Initiation Plan}
+
 \subsection{Lost Communications Plan}
 The lost communications plan allows our controller to command an aerodynamic termination in the event that signals from the RC radio are not received. The \textbf{DroneAPI} source was modified to present the \textit{rssi} field to client code, representing the received signal strength indication as measured by the Pixhawk autopilot. When the \textit{rssi} drops below a certain threshold, fly-by-wire 'A' mode is engaged, with a throttle override set to the minimum value. The controller then stops sending any additional commands, but stays on-line to monitor whether communications is re-established. If the RC link is re-established, the code can disengage the aerodynamic termination override and set the autopilot back to 'MANUAL' mode, where the RC radio commands are passed through to the control surface servos.
+\subsection{Software Sections}
 \section{SITL Simulation Results}
 \subsection{Lost Communications}
 In simulation, the \textit{rssi} field is set to 0; we were able to verify the correct performance of a proof-of-concept implementation of the lost comm strategy. In simulation, the aircraft glides to the ground. This section would require additional verification with the RC remote and physical system before integrating onto an airframe.
