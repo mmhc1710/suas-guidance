@@ -1,0 +1,15 @@
+diff --git a/droneapi/module/api.py b/droneapi/module/api.py
+index 131c266..aa2e9ab 100644
+--- a/droneapi/module/api.py
++++ b/droneapi/module/api.py
+@@ -135,6 +135,10 @@ class MPVehicle(Vehicle):
+     @property
+     def velocity(self):
+         return [ self.__module.vx, self.__module.vy, self.__module.vz ]
++        
++    @property
++    def angularRates(self):
++        return [ self.__module.pitchspeed, self.__module.rollspeed, self.__module.yawspeed]
+ 
+     @property
+     def attitude(self):
