@@ -64,6 +64,7 @@ while not (threading.current_thread().exit or shouldQuit):
         v.mode = VehicleMode("MANUAL")
         v.channel_override = { "0" : 0, "1" : 0, "2" : 0, "3" : 0, "4" : 0, "5" : 0, "6" : 0, "7" : 0};
         v.flush()
+
     time.sleep(1)
 
 #v.remove_attribute_observer("mode", mode_callback)
