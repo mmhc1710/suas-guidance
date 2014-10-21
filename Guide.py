@@ -1,21 +1,9 @@
-def Guide(PathFileName,ACx,ACy,ACz,ACchi,ACv):
+def Guide(Pathx,Pathy,Pathz,ACx,ACy,ACz,ACchi,ACv):
     import math
     import csv
     import numpy
     import matplotlib.pyplot as plt
     import FindInt
-    #Read In Path
-    Reader = csv.reader(open(PathFileName, 'rv'))#create reader object
-    ind = 0#initialize ind, Pathx, Pathy and Pathz
-    Pathx = []
-    Pathy = []
-    Pathz = []
-    #for all the rows in the csv file, assign each datum to its appropriate variable
-    for row in Reader:
-        Pathx.append(float(row[0]))
-        Pathy.append(float(row[1]))
-        Pathz.append(float(row[2]))
-        ind = ind + 1
 
     ######################################## Define Gain ##################################################
     L1 = 20#meters
@@ -61,5 +49,5 @@ def Guide(PathFileName,ACx,ACy,ACz,ACchi,ACv):
     
     ChiDotDesired = ACv/R
     DesiredAltitude = Pathz[MinIndex]
-    print ChiDotDesired, DesiredAltitude
+    #print ChiDotDesired, DesiredAltitude
     return ChiDotDesired, DesiredAltitude
