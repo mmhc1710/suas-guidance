@@ -15,16 +15,107 @@ This project presents an implementation of Park, Dest, and How's nonlinear guida
 As published, the Park et al algorithm uses a lookahead distance to determine an intercept angle. The aircraft is then commanded via turn rate to achieve the desired trajectory.
 \subsection{Custom Adjustments}
 Park et al do not include a means of providing altitude control. As part of the teams's modifications to the base algorithm, we have implemented a proportional-integral-derivative controller around climb rate.  
-\section{MATLAB Simulation Results}
-\section{Architecture Block Diagrams}
-\subsection{Processing Breakdown}
-\subsection{Algorithm Initiation Plan}
 
+Using algorithm even > l1 distance away - Sets reference point to closest point on the path
+
+Discretized the path (not analytical)
+
+airspeed / turn rate / desired altitude close enough to the original value 
+
+command translation from algorithm to FBWA commands -> roll, pitch, throttle setting: speed hold loops (P+feedforward on pitch), PID on altitude, turn rate: feedforward to roll + propoertional gain
+
+
+damping of pitch motions based on pitch rate to avoid divergence
+
+\section{MATLAB Simulation Results}
+Based on Matt's homework with a proportional altitude controller
+
+\section{Architecture Block Diagrams}
+Show DroneAPI on Odroid to Pixhawk via Mavlink
+
+Show GCS + RC radio relationship
+
+\subsection{Processing Breakdown}
+
+Major sections:
+Read points
+Find guidance command
+->GPS translation
+Issue flight directives
+
+\subsection{Algorithm Initiation Plan}
+Begin in Manual mode
+Start DroneAPI code
+Changes mode to FBWA
+Begin nav
 \subsection{Lost Communications Plan}
 The lost communications plan allows our controller to command an aerodynamic termination in the event that signals from the RC radio are not received. The \textbf{DroneAPI} source was modified to present the \textit{rssi} field to client code, representing the received signal strength indication as measured by the Pixhawk autopilot. When the \textit{rssi} drops below a certain threshold, fly-by-wire 'A' mode is engaged, with a throttle override set to the minimum value. The controller then stops sending any additional commands, but stays on-line to monitor whether communications is re-established. If the RC link is re-established, the code can disengage the aerodynamic termination override and set the autopilot back to 'MANUAL' mode, where the RC radio commands are passed through to the control surface servos.
 \subsection{Software Sections}
+Written in python2.7
+
+L1 provides guidance logic, PID for everything else for alt/turn rate
+
+L1 formular that produces a value for a given state: reference values
+
+Controllers actually make the reference values track
+
+Why not FBWB? (Alt controller was garbage)
+
+1. Roll Control
+2. Alt Control
+3. Speed Control
+
+(PID with feedforward of ...)
+
+Lat/lon converter
+
+Sat limiter
+
+DroneAPI mods 
+
+used autotune to find gains
+
+How did we find trim states?
+
+Used fbwb mode and jsbsim to extract trim states from sim RC output values
+
+Difference in pitch trim vs elevator deflection - used stabilize mode instead
+
+
 \section{SITL Simulation Results}
+
+Plots of tracking error vs path 
+Ellipse following
+Gain tuning results
+CPU loading from nav results - is it feasible to implement on the ODroid
+
+
 \subsection{Lost Communications}
 In simulation, the \textit{rssi} field is set to 0; we were able to verify the correct performance of a proof-of-concept implementation of the lost comm strategy. In simulation, the aircraft glides to the ground. This section would require additional verification with the RC remote and physical system before integrating onto an airframe.
 \section{Recommendations}
+
+Difficulties in controlling physical aircraft
+
+Having well-tuned gains for the aircraft - autotune helps, but need some flight testing to determine real values
+
+Learning curve for Python?
+
+Having controller logically so far away from actuator control
+-too much abstraction?
+-adding latency?
+-flexibility vs latency?
+
+Reading CSV file once, saving in RAM for future loops
+
+Rationale for not making firmware mods
+ - not customized for a particular autopilot
+ - Limits programming knowledge to Python needed (platform independent)
+ - implement via MAVlink script w/o DroneAPI 
+ 
+Disturbance rejection - wind model,  
+ 
+Appendix - 
+Key code - control code, Paul's file
+
+
 \end{document}
