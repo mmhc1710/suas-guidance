@@ -111,6 +111,11 @@ alt_int_err = 0
 print "Switching to FBWA Mode"
 v.mode = VehicleMode("FBWA")
 
+rollspeed = v.angularRates[0]
+pitchspeed = v.angularRates[1]
+yawspeed = v.angularRates[2]
+
+
 while True:
 	###GPS COORDINATE TRANSFORM#################################################################
 	flat = lla2flat(v.location.lat,v.location.lon,v.location.alt,lat0,lon0,alt0)
@@ -127,8 +132,8 @@ while True:
 	[turn_rate_des,z_target] = Guide.Guide(Pathx,Pathy,Pathz,X,Y,Z,Chi,speed_desired) 
 	alt_target = alt0 - z_target #altitude positive but z down
 	#for holding turn rate/altitude, use lines below instead
-	turn_rate_des = 0 #ENU turn rate (positive CCW)
-	alt_target = start_alt + 200 #ENU alt (positive up)
+	#turn_rate_des = 0 #ENU turn rate (positive CCW)
+	#alt_target = start_alt + 200 #ENU alt (positive up)
 	#############################################################################################
 
 	###TURN RATE CONTROLLER######################################################################
@@ -146,9 +151,9 @@ while True:
 	Rib = array([[cos(theta)*cos(psi), cos(theta)*sin(psi), -sin(theta)], [sin(phi)*sin(theta)*cos(psi) - cos(phi)*sin(psi), sin(phi)*sin(theta)*sin(psi) + cos(phi)*cos(psi), sin(phi)*cos(theta)], [cos(phi)*sin(theta)*cos(psi) + sin(phi)*sin(psi), cos(phi)*sin(theta)*sin(psi) - sin(phi)*cos(psi), cos(phi)*cos(theta)]])
 
 	Rbi = np.transpose(Rib)
-	omega = array([v.rollspeed,v.pitchspeed,v.yawspeed]).reshape(3,1) #need to know how to get rates
+	omega = array([rollspeed, pitchspeed, yawspeed]).reshape(3,1) #need to know how to get rates
 	euler_rate = Rbi*omega
-	turn_rate = euler_rate[2] #note negative sign to switch to ENU coordinates NOW STAYING IN NED
+	turn_rate = euler_rate[2][0] #note negative sign to switch to ENU coordinates NOW STAYING IN NED
 	turn_rate_err = turn_rate - turn_rate_des
 	# positive roll -> negative turn rate
 	#turn_rate_err = 0
@@ -200,14 +205,14 @@ while True:
 	#t_ff = time.time() + dt #feed forward time (if needed)
 
 	#call control on FF position
-
-	[turn_rate_ff,alt_des_ff] = Guide.Guide(Pathx,Pathy,Pathz,X_ff,Y_ff,Z_ff,Chi_ff,speed_desired)
-
+	
+	[turn_rate_ff,z_target_ff] = Guide.Guide(Pathx,Pathy,Pathz,X_ff,Y_ff,Z_ff,Chi_ff,speed_desired)
+	alt_des_ff = alt0 - z_target_ff
 	#determine climb rate needed
 	climb_des = (alt_des_ff - alt_target)/dt
 
 	# add all terms for altitude control
-	pitch_cmd = KP_pitch * ( alt_target - v.location.alt) - KI_pitch*alt_int_err - KD_pitch * (v.velocity[2] - climb_des)- pitch_trim - KPR_pitch*v.pitchspeed #system NEU?!?! # 
+	pitch_cmd = KP_pitch * ( alt_target - v.location.alt) - KI_pitch*alt_int_err - KD_pitch * (v.velocity[2] - climb_des)- pitch_trim - KPR_pitch*v.angularRates[1] #system NEU?!?! # 
 	#print 'p cmd'
 	#print pitch_cmd
 	#print 'proportional'
@@ -216,6 +221,12 @@ while True:
 	#print -KI_pitch*alt_int_err
 	#print 'derivative'
 	#print -KD_pitch * (v.velocity[2] - climb_des)
+	print 'chi'
+	print Chi
+	print 'alt_target'
+	print alt_target
+	print 'turn_rate'
+	print turn_rate
 	#print climb_des
 
 	###Convert pitch_cmd to RC2 value###
