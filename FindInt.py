@@ -45,7 +45,7 @@ def FI(L1,Pathx,Pathy,ACStatex,ACStatey,ACStatez,ACStatechi):
     if IntIndMax == len(Pathx):
 	IndF = 1
 	IndR = IntIndMax - 1
-    else if IntIndMax == 1:
+    elif IntIndMax == 1:
 	IndF = 1 + IntIndMax
 	IndR = len(Pathx)
     else:
