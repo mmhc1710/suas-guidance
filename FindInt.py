@@ -39,22 +39,21 @@ def FI(L1,Pathx,Pathy,ACStatex,ACStatey,ACStatez,ACStatechi):
 		for ii in range(len(Pathx)):
 			D.append(math.sqrt(math.pow((L1x[IntInds[i]]-Pathx[ii]),2) + math.pow((L1y[IntInds[i]]-Pathy[ii]),2)))
 		IntIndMaxPath.append(numpy.argmin(D))
-	#Find the most index positive intersection -> index of L1 circle
-	IntIndMax = max(IntInds)
 
-	#if IntIndMax == len(Pathx):
-	#	IndF = 1
-	#	IndR = IntIndMax - 1
-	#elif IntIndMax == 1:
-	#	IndF = 1 + IntIndMax
-	#	IndR = len(Pathx)
-	#else:
-	#	IndF = IntIndMax + 1
-	#	IndR = IntIndMax - 1
+	for i in range(len(Pathx)):
+		ACDist.append(math.sqrt(math.pow((ACStatex-Pathx[i]),2) + math.pow((ACStatey-Pathy[i]),2)))
+	ACDistMinInd = numpy.argmin(ACDist)
 
-	#DR = math.sqrt(math.pow((L1x[L1IntInd]-Pathx[IndR]),2) + math.pow((L1y[L1IntInd]-Pathy[IndR]),2))
+	IntIndDiffs = []
+	for i in range(len(IntIndMaxPath)):
+		IntIndDiffs.append(IntIndMaxPath[i]-ACDistMinInd)
+	
+	if min(IntIndDiffs) < 0 and max(IntIndDiffs) > 0:
+		RefInd =  ACDistMinInd + min(filter(lambda a: a>0, IntIndDiffs))
+	else:
+		RefInd = ACDistMinInd + min(IntIndDiffs)
 
-	INTx = Pathx[max(IntIndMaxPath)]
-	INTy = Pathy[max(IntIndMaxPath)]
+	INTx = Pathx[RefInd]
+	INTy = Pathy[RefInd]
 	print INTx, INTy
 	return(INTx,INTy)

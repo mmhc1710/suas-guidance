@@ -50,3 +50,28 @@ def Guide(Pathx,Pathy,Pathz,ACx,ACy,ACz,ACchi,ACv):
 	DesiredAltitude = Pathz[MinIndex]
 	#print ChiDotDesired, DesiredAltitude
 	return ChiDotDesired, DesiredAltitude
+
+import csv
+import numpy
+
+###IMPORT CSV PATH######################################################################
+#Read In Path
+Reader = csv.reader(open('tilted_ellipse.csv', 'rv'))#create reader object
+ind = 0#initialize ind, Pathx, Pathy and Pathz
+Pathx = []
+Pathy = []
+Pathz = []
+#for all the rows in the csv file, assign each datum to its appropriate variable
+for row in Reader:
+	Pathx.append(float(row[0]))
+	Pathy.append(float(row[1]))
+	Pathz.append(float(row[2]))
+	ind = ind + 1
+########################################################################################
+
+ACx = 60;
+ACy = -335;
+ACz = 0;
+ACchi = 0;
+ACv = 20;
+Guide(Pathx,Pathy,Pathz,ACx,ACy,ACz,ACchi,ACv)
