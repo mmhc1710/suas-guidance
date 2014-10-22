@@ -39,7 +39,7 @@ def FI(L1,Pathx,Pathy,ACStatex,ACStatey,ACStatez,ACStatechi):
 		for ii in range(len(Pathx)):
 			D.append(math.sqrt(math.pow((L1x[IntInds[i]]-Pathx[ii]),2) + math.pow((L1y[IntInds[i]]-Pathy[ii]),2)))
 		IntIndMaxPath.append(numpy.argmin(D))
-
+	ACDist = []
 	for i in range(len(Pathx)):
 		ACDist.append(math.sqrt(math.pow((ACStatex-Pathx[i]),2) + math.pow((ACStatey-Pathy[i]),2)))
 	ACDistMinInd = numpy.argmin(ACDist)
