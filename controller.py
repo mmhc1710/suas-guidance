@@ -72,16 +72,16 @@ lon0 = -105.2435532
 alt0 = 1680.38
 
 # gains
-KP_pitch = 0.3#Proportional gain for altitude to pitch
-KI_pitch = 0.03#Integral gain for altitude to pitch
-KD_pitch = 0.6#Derivative gain for vertical velocity to pitch
+KP_pitch = 0.5#0.3#Proportional gain for altitude to pitch
+KI_pitch = 0.03#0.03#Integral gain for altitude to pitch
+KD_pitch = 0.8#0.6#Derivative gain for vertical velocity to pitch
 KPR_pitch = 0.0 #Pitch Rate gain, currently unused
 
 KP_throttle = 4.0
 KD_throttle = 1.5 #currently unused
-KFF_throttle = 15.0
+KFF_throttle = 350.0#20.0
 
-KP_roll = 10.0 #deg/(rad/s)
+KP_roll = 13.0 #deg/(rad/s)
 
 #altitude integrator wind-up limit
 alt_int_max = 140
@@ -121,9 +121,9 @@ while True:
 	#print 'start'
 	###GPS COORDINATE TRANSFORM#################################################################
 	flat = lla2flat(v.location.lat,v.location.lon,v.location.alt,lat0,lon0,alt0)
-	X = flat[0]
-	Y = flat[1]
-	Z = flat[2]
+	X = flat[0] #ENU
+	Y = flat[1] #ENU
+	Z = flat[2] #ENU
 	if (v.velocity[0] > 0) or (v.velocity[0] < 0): #may want to set this threshold higher at some point
 		Chi = np.arctan(v.velocity[1]/v.velocity[0]) #assuming zero path angle is aligned with x
 	else:
@@ -132,13 +132,11 @@ while True:
 	
 	###PATH FOLLOWING LOGIC (L1 GUIDANCE)############################################
 	#if loopcount %500 == 0:	
-	[turn_rate_des,z_target] = Guide.Guide(Pathx,Pathy,Pathz,Y,X,-Z,Chi,speed_desired)
-	turn_rate_des = cmd_saturate(turn_rate_des,-0.2,0.2)
-	print 'turnrate'
-	print turn_rate_des
+	[turn_rate_des,z_target] = Guide.Guide(Pathx,Pathy,Pathz,Y,X,-Z,Chi,speed_desired) #NED
+	turn_rate_des = cmd_saturate(turn_rate_des,-0.2,0.2) #NED
 	alt_target = alt0 - z_target #altitude positive but z down
 	#for holding turn rate/altitude, use lines below instead
-	#turn_rate_des = -10*pi/(180) #ENU turn rate (positive CCW)
+	#turn_rate_des = 0*pi/(180) #NED turn rate (positive CW)
 	#alt_target = start_alt + (time.time()-initial_t)*5 #ENU alt (positive up)
 	#############################################################################################
 
@@ -169,7 +167,7 @@ while True:
 	#print bankangle_d_ff
 
 	#add proportional term
-	bankangle_d = bankangle_d_ff + KP_roll*turn_rate_err
+	bankangle_d = bankangle_d_ff - KP_roll*turn_rate_err
 	#print'bank'
 	#print bankangle_d_ff
 	#convert bank angle to RC stick value
@@ -261,8 +259,7 @@ while True:
 	#vel_prev = v.airspeed
 
 	#throttle_cmd = KP_throttle * (speed_desired - v.airspeed) - KD_throttle*as_acc
-	throttle_cmd = KP_throttle * (speed_desired - v.airspeed) + KFF_throttle*np.sin(v.attitude.pitch-pitch_trim)
-
+	throttle_cmd = KP_throttle * (speed_desired - v.airspeed) + KFF_throttle*np.sin(v.attitude.pitch-pitch_trim*(pi/180))
 	###Convert throttle_cmd to RC3 value###
 	RC3_cmd = throttle_cmd * 10 + throttle_trim
 	#############################################################################################
