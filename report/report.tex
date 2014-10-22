@@ -1,5 +1,26 @@
 \documentclass{aiaa}
+\usepackage{color, soul}
 \providecommand{\e}[1]{\ensuremath{\times 10^{#1}}}
+%From https://gist.github.com/kroger/6140188
+\usepackage{listings}
+ 
+\lstset{
+  language=Python,
+  showstringspaces=false,
+  formfeed=\newpage,
+  tabsize=4,
+  commentstyle=\itshape,
+  basicstyle=\ttfamily,
+  morekeywords={models, lambda, forms}
+}
+ 
+\newcommand{\python}[2]{
+  \hrulefill
+  \subsection*{#1}
+  \lstinputlisting{#2}
+  \vspace{2em}
+}
+
 
 \title{ASEM 5519: Aerorobotics \\ Project 1, Phase 1}
 \author{Matthew Aitken \and Aaron Buysse \and Paul Guerrie \and Steve McGuire
@@ -15,7 +36,7 @@ This project presents an implementation of Park, Dest, and How's nonlinear guida
 As published, the Park et al algorithm uses a lookahead distance to determine an intercept angle. The aircraft is then commanded via turn rate to achieve the desired trajectory.
 \subsection{Custom Adjustments}
 Park et al do not include a means of providing altitude control. As part of the teams's modifications to the base algorithm, we have implemented a proportional-integral-derivative controller around climb rate.  
-
+\hl{
 Using algorithm even > l1 distance away - Sets reference point to closest point on the path
 
 Discretized the path (not analytical)
@@ -26,31 +47,71 @@ command translation from algorithm to FBWA commands -> roll, pitch, throttle set
 
 
 damping of pitch motions based on pitch rate to avoid divergence
-
+}
 \section{MATLAB Simulation Results}
+\hl{
 Based on Matt's homework with a proportional altitude controller
-
+}
 \section{Architecture Block Diagrams}
-Show DroneAPI on Odroid to Pixhawk via Mavlink
-
-Show GCS + RC radio relationship
+Our guidance code is implemented at a high level, running aboard the supervisory computer on-board the aircraft, as shown in \Figure{sys-arch}. Control over our guidance code is accomplished via the WiFi link to the onboard computer, while the guidance code communicates via MAVLink to the Pixhawk autopilot. From the autopilot's perspective, the guidance code is simply another MAVLink-compliant consumer of messages. 
+\centerfig{figures/System-Architecture.pdf}{sys-arch}{Overall System Architecture}
+\subsection{Pixhawk Autopilot}
+In our system, the Pixhawk autopilot is running an unmodified ArduPilot firmware.
+\subsection{Ground Control Station}
+The ground control station (GCS) is assumed to be running a MAVLink-compatible planner software, such as \textit{APMPlanner2}. Should the operations team decide to utilize a GCS heartbeat check, the heartbeat will be provided by the GCS MAVLink client so as to detect problems in the 915MHz serial link between the vehicle and the ground. 
+\subsection{Supervisory Computer}
+The supervisory computer is running a distribution of Linux with Python 2.7 and USB CDC ACM serial support, as well as a WiFi link. The bidirectional MAVLink connection to the Pixhawk provides state data, as well as a means of transmitting control messages. Onboard the supervisory computer, the guidance code runs as a DroneAPI module, executed as a MAVProxy plugin.
 
 \subsection{Processing Breakdown}
+The navigation module consists of a number of Python modules running within DroneAPI that implements all required code. 
+\subsubsection{Point Reading}
+The navigation module assumes that the path to follow meets the format presented by Dr. Frew in class, in a comma-separated-value (CSV) formatted ASCII file. The points along the path are presented in a local north-east-down coordinate frame and are assumed to wrap together to form a closed path. 
+\subsubsection{GPS Point Translation}
+The GPS point translation module transforms the current pose of the aircraft in the world frame (given by the autopilot's extended Kalman filter) into the local frame set by Dr. Frew's datum.
+  
+\subsubsection{Guidance Command Generation}
+The guidance command generation module uses the Park L1 algorithm to generate a desired yaw for the aircraft, given the current pose in local coordinates and the path to be followed as a set of discrete points in local coordinates.
 
-Major sections:
-Read points
-Find guidance command
-->GPS translation
-Issue flight directives
-
+\subsubsection{Flight Directive Generation}
+Given a desired yaw angle and a desired altitude, the flight directive generator implements several controllers to reach the desired references. These controllers prepare a command vector to be given to the autopilot under fly-by-wire-A. 
+ 
 \subsection{Algorithm Initiation Plan}
-Begin in Manual mode
-Start DroneAPI code
-Changes mode to FBWA
-Begin nav
+Our guidance logic assumes that the aircraft is already in flight in the MANUAL flight mode. When the navigation module is started, the flight mode is changed to fly-by-wire-A (FBWA), and the navigation module begins sending appropriate commands. When navigation testing is concluded, the flight mode is changed to MANUAL and the navigation module is shut down.
+
+\subsubsection{Preflight Actions}
+\begin{enumerate}
+	\item Start the ODroid supervisory computer
+	\item Start a MAVProxy session
+	\item Disable heartbeat generation in the MAVProxy session: \\
+	\textit{set heartbeat 0}
+	\item Verify communication with the Pixhawk by confirming parameters and sensor values
+	\item Load the DroneAPI module \\
+	\textit{module load api}
+	\item Standby for guidance activation from operations team
+\end{enumerate}
+\subsubsection{Takeoff to Activation Actions}
+\begin{enumerate}
+	\item Monitor the MAVProxy console for any off-nominal conditions
+\end{enumerate}
+\subsubsection{Guidance Activate Actions}
+\begin{enumerate}
+	\item Start the navigation module within DroneAPI: \\
+	\textit{api start controller.py}
+	\item Report navigation engaged to operations team
+\end{enumerate}
+\subsubsection{Guidance Disengage Actions}
+\begin{enumerate}
+	\item Reset the flight mode to MANUAL: \\
+	\textit{mode MANUAL}
+	\item Stop the navigation module: \\
+	\textit{api stop \textless threadid\textgreater}
+	\item Report navigation disengaged to operations team
+\end{enumerate}
+
 \subsection{Lost Communications Plan}
 The lost communications plan allows our controller to command an aerodynamic termination in the event that signals from the RC radio are not received. The \textbf{DroneAPI} source was modified to present the \textit{rssi} field to client code, representing the received signal strength indication as measured by the Pixhawk autopilot. When the \textit{rssi} drops below a certain threshold, fly-by-wire 'A' mode is engaged, with a throttle override set to the minimum value. The controller then stops sending any additional commands, but stays on-line to monitor whether communications is re-established. If the RC link is re-established, the code can disengage the aerodynamic termination override and set the autopilot back to 'MANUAL' mode, where the RC radio commands are passed through to the control surface servos.
 \subsection{Software Sections}
+\hl{
 Written in python2.7
 
 L1 provides guidance logic, PID for everything else for alt/turn rate
@@ -80,20 +141,20 @@ How did we find trim states?
 Used fbwb mode and jsbsim to extract trim states from sim RC output values
 
 Difference in pitch trim vs elevator deflection - used stabilize mode instead
-
+}
 
 \section{SITL Simulation Results}
-
+\hl{
 Plots of tracking error vs path 
 Ellipse following
 Gain tuning results
 CPU loading from nav results - is it feasible to implement on the ODroid
-
+}
 
 \subsection{Lost Communications}
 In simulation, the \textit{rssi} field is set to 0; we were able to verify the correct performance of a proof-of-concept implementation of the lost comm strategy. In simulation, the aircraft glides to the ground. This section would require additional verification with the RC remote and physical system before integrating onto an airframe.
 \section{Recommendations}
-
+\hl{
 Difficulties in controlling physical aircraft
 
 Having well-tuned gains for the aircraft - autotune helps, but need some flight testing to determine real values
@@ -113,9 +174,10 @@ Rationale for not making firmware mods
  - implement via MAVlink script w/o DroneAPI 
  
 Disturbance rejection - wind model,  
- 
-Appendix - 
-Key code - control code, Paul's file
+ }
 
+\section{Appendix A: Code}
+\python{Controller.py: Main controller implementation}{../controller.py}
+\python{Guide.py: Implementation of Nonlinear Guidance Code}{../Guide.py}
 
 \end{document}
