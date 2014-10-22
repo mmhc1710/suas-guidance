@@ -62,14 +62,14 @@ for row in Reader:
 #constants
 pitch_trim = 0.989 #deg
 throttle_trim = 1230 #RC channel
-start_alt = 1680 #m
+start_alt = 1680.38 #m
 g = 9.81 #m/s^2
 speed_desired = 22 #m/s
 
 #desired coordinate center (datum)
-lat0 = -105.246
-lon0 = 40.1358
-alt0 = 1680
+lat0 = 40.1447601
+lon0 = -105.2435532
+alt0 = 1680.38
 
 # gains
 KP_pitch = 0.3#Proportional gain for altitude to pitch
@@ -79,9 +79,9 @@ KPR_pitch = 0.0 #Pitch Rate gain, currently unused
 
 KP_throttle = 4.0
 KD_throttle = 1.5 #currently unused
-KFF_throttle = 3.0
+KFF_throttle = 15.0
 
-KP_roll = 60.0 #deg/(rad/s)
+KP_roll = 10.0 #deg/(rad/s)
 
 #altitude integrator wind-up limit
 alt_int_max = 140
@@ -111,12 +111,14 @@ alt_int_err = 0
 print "Switching to FBWA Mode"
 v.mode = VehicleMode("FBWA")
 
-rollspeed = v.angularRates[0]
-pitchspeed = v.angularRates[1]
-yawspeed = v.angularRates[2]
+initial_t = time.time()
 
-
+loopcount = 0
 while True:
+	rollspeed = v.angularRates[0]
+	pitchspeed = v.angularRates[1]
+	yawspeed = v.angularRates[2]
+	#print 'start'
 	###GPS COORDINATE TRANSFORM#################################################################
 	flat = lla2flat(v.location.lat,v.location.lon,v.location.alt,lat0,lon0,alt0)
 	X = flat[0]
@@ -127,13 +129,17 @@ while True:
 	else:
 		Chi = 0;
 	############################################################################################
-
+	
 	###PATH FOLLOWING LOGIC (L1 GUIDANCE)############################################
-	[turn_rate_des,z_target] = Guide.Guide(Pathx,Pathy,Pathz,X,Y,Z,Chi,speed_desired) 
+	#if loopcount %500 == 0:	
+	[turn_rate_des,z_target] = Guide.Guide(Pathx,Pathy,Pathz,Y,X,-Z,Chi,speed_desired)
+	turn_rate_des = cmd_saturate(turn_rate_des,-0.2,0.2)
+	print 'turnrate'
+	print turn_rate_des
 	alt_target = alt0 - z_target #altitude positive but z down
 	#for holding turn rate/altitude, use lines below instead
-	#turn_rate_des = 0 #ENU turn rate (positive CCW)
-	#alt_target = start_alt + 200 #ENU alt (positive up)
+	#turn_rate_des = -10*pi/(180) #ENU turn rate (positive CCW)
+	#alt_target = start_alt + (time.time()-initial_t)*5 #ENU alt (positive up)
 	#############################################################################################
 
 	###TURN RATE CONTROLLER######################################################################
@@ -152,7 +158,7 @@ while True:
 
 	Rbi = np.transpose(Rib)
 	omega = array([rollspeed, pitchspeed, yawspeed]).reshape(3,1) #need to know how to get rates
-	euler_rate = Rbi*omega
+	euler_rate = dot(Rbi,omega)
 	turn_rate = euler_rate[2][0] #note negative sign to switch to ENU coordinates NOW STAYING IN NED
 	turn_rate_err = turn_rate - turn_rate_des
 	# positive roll -> negative turn rate
@@ -164,7 +170,8 @@ while True:
 
 	#add proportional term
 	bankangle_d = bankangle_d_ff + KP_roll*turn_rate_err
-
+	#print'bank'
+	#print bankangle_d_ff
 	#convert bank angle to RC stick value
 	bankangle_stick = (50*(RC1_MAX - RC1_MIN)/(LIM_ROLL))*bankangle_d + RC1_ZERO
 
@@ -197,12 +204,16 @@ while True:
 
 	#feed forward term
 	#feed forward position
-	dt = 0.01
-	X_ff = X + v.airspeed*np.cos(Chi)*dt
-	Y_ff = Y + v.airspeed*np.sin(Chi)*dt
-	Z_ff = Z + v.velocity[0]*dt
+	dt = 0.1
+	X_ff = X + v.velocity[0]*dt
+	Y_ff = Y + v.velocity[1]*dt
+	Z_ff = Z - v.velocity[2]*dt #velocity comes out in NEU
 	Chi_ff = Chi + turn_rate*dt
 	#t_ff = time.time() + dt #feed forward time (if needed)
+	#print X_ff - X
+	#print Y_ff - Y
+	#print Z_ff - Z
+	#print v.airspeed
 
 	#call control on FF position
 	
@@ -212,7 +223,7 @@ while True:
 	climb_des = (alt_des_ff - alt_target)/dt
 
 	# add all terms for altitude control
-	pitch_cmd = KP_pitch * ( alt_target - v.location.alt) - KI_pitch*alt_int_err - KD_pitch * (v.velocity[2] - climb_des)- pitch_trim - KPR_pitch*v.angularRates[1] #system NEU?!?! # 
+	pitch_cmd = KP_pitch * ( alt_target - v.location.alt) - KI_pitch*alt_int_err - KD_pitch * (v.velocity[2] - 0*climb_des)- pitch_trim - KPR_pitch*v.angularRates[1] #system NEU?!?! # 
 	#print 'p cmd'
 	#print pitch_cmd
 	#print 'proportional'
@@ -221,14 +232,18 @@ while True:
 	#print -KI_pitch*alt_int_err
 	#print 'derivative'
 	#print -KD_pitch * (v.velocity[2] - climb_des)
-	print 'chi'
-	print Chi
-	print 'alt_target'
-	print alt_target
-	print 'turn_rate'
-	print turn_rate
+	#print 'climb des'
 	#print climb_des
-
+	#print 'chi'
+	#print Chi
+	#print 'alt_target'
+	#print alt_target
+	#print 'alt_target_ff'
+	#print alt_des_ff
+	#print 'turn_rate'
+	#print turn_rate
+	#print climb_des
+	#print 'end'
 	###Convert pitch_cmd to RC2 value###
 	if pitch_cmd > 0:
 		RC2_cmd = -pitch_cmd * (RC2_ZERO - RC2_MIN)/(LIM_PITCH_MAX)*100 + RC2_ZERO
@@ -260,3 +275,4 @@ while True:
 	#print "Overriding RC channels..."
 	v.channel_override = { "1" : RC1_cmd, "2" : RC2_cmd, "3" : RC3_cmd }
 	v.flush()
+	loopcount = loopcount + 1
