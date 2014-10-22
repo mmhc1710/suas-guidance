@@ -31,9 +31,14 @@ damping of pitch motions based on pitch rate to avoid divergence
 Based on Matt's homework with a proportional altitude controller
 
 \section{Architecture Block Diagrams}
-Show DroneAPI on Odroid to Pixhawk via Mavlink
-
-Show GCS + RC radio relationship
+Our guidance code is implemented at a high level, running aboard the supervisory computer on-board the aircraft, as shown in \Figure{sys-arch}. Control over our guidance code is accomplished via the WiFi link to the onboard computer, while the guidance code communicates via MAVLink to the Pixhawk autopilot. From the autopilot's perspective, the guidance code is simply another MAVLink-compliant consumer of messages. 
+\centerfig{figures/System-Architecture.pdf}{sys-arch}{Overall System Architecture}
+\subsection{Pixhawk Autopilot}
+In our system, the Pixhawk autopilot is running an unmodified ArduPilot firmware.
+\subsection{Ground Control Station}
+The ground control station (GCS) is assumed to be running a MAVLink-compatible planner software, such as \textit{APMPlanner2}. Should the operations team decide to utilize a GCS heartbeat check, the heartbeat will be provided by the GCS MAVLink client so as to detect problems in the 915MHz serial link between the vehicle and the ground. 
+\subsection{Supervisory Computer}
+The supervisory computer is running a distribution of Linux with Python 2.7 and USB CDC ACM serial support, as well as a WiFi link. The bidirectional MAVLink connection to the Pixhawk provides state data, as well as a means of transmitting control messages. Onboard the supervisory computer, the guidance code runs as a DroneAPI module, executed as a MAVProxy plugin.
 
 \subsection{Processing Breakdown}
 
@@ -44,10 +49,38 @@ Find guidance command
 Issue flight directives
 
 \subsection{Algorithm Initiation Plan}
-Begin in Manual mode
-Start DroneAPI code
-Changes mode to FBWA
-Begin nav
+Our guidance logic assumes that the aircraft is already in flight in the MANUAL flight mode. When the navigation module is started, the flight mode is changed to fly-by-wire-A (FBWA), and the navigation module begins sending appropriate commands. When navigation testing is concluded, the flight mode is changed to MANUAL and the navigation module is shut down.
+
+\subsubsection{Preflight Actions}
+\begin{enumerate}
+	\item Start the ODroid supervisory computer
+	\item Start a MAVProxy session
+	\item Disable heartbeat generation in the MAVProxy session: \\
+	\textit{set heartbeat 0}
+	\item Verify communication with the Pixhawk by confirming parameters and sensor values
+	\item Load the DroneAPI module \\
+	\textit{module load api}
+	\item Standby for guidance activation from operations team
+\end{enumerate}
+\subsubsection{Takeoff to Activation Actions}
+\begin{enumerate}
+	\item Monitor the MAVProxy console for any off-nominal conditions
+\end{enumerate}
+\subsubsection{Guidance Activate Actions}
+\begin{enumerate}
+	\item Start the navigation module within DroneAPI: \\
+	\textit{api start controller.py}
+	\item Report navigation engaged to operations team
+\end{enumerate}
+\subsubsection{Guidance Disengage Actions}
+\begin{enumerate}
+	\item Reset the flight mode to MANUAL: \\
+	\textit{mode MANUAL}
+	\item Stop the navigation module: \\
+	\textit{api stop \textless threadid\textgreater}
+	\item Report navigation disengaged to operations team
+\end{enumerate}
+
 \subsection{Lost Communications Plan}
 The lost communications plan allows our controller to command an aerodynamic termination in the event that signals from the RC radio are not received. The \textbf{DroneAPI} source was modified to present the \textit{rssi} field to client code, representing the received signal strength indication as measured by the Pixhawk autopilot. When the \textit{rssi} drops below a certain threshold, fly-by-wire 'A' mode is engaged, with a throttle override set to the minimum value. The controller then stops sending any additional commands, but stays on-line to monitor whether communications is re-established. If the RC link is re-established, the code can disengage the aerodynamic termination override and set the autopilot back to 'MANUAL' mode, where the RC radio commands are passed through to the control surface servos.
 \subsection{Software Sections}
