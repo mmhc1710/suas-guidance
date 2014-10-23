@@ -55,5 +55,5 @@ def FI(L1,Pathx,Pathy,ACStatex,ACStatey,ACStatez,ACStatechi):
 
 	INTx = Pathx[RefInd]
 	INTy = Pathy[RefInd]
-	print INTx, INTy
+	#print INTx, INTy
 	return(INTx,INTy)

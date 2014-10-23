@@ -20,12 +20,14 @@ def Guide(Pathx,Pathy,Pathz,ACx,ACy,ACz,ACchi,ACv):
 		Dist.append(math.sqrt(math.pow((ACx-Pathx[i]),2) + math.pow((ACy-Pathy[i]),2) + math.pow((ACz-Pathz[i]),2)))
 
 	MinIndex = numpy.argmin(Dist)#The closest point is the one with the minimum distance
-
-	if Dist[MinIndex] < L1:
+	TEST2 = numpy.min(Dist)
+	if numpy.min(Dist) < L1:
 		Refx, Refy = FindInt.FI(L1,Pathx,Pathy,ACx,ACy,ACz,ACchi)
+		TEST = 1
 	else:
 		Refx = Pathx[MinIndex]#If we are further than L1 away from any point on the path, use the closest point as the 	
 		Refy = Pathy[MinIndex]#referece point
+		TEST = 0
 	#OPTIONAL: Plot the path, the AC and the reference point
 	#plt.figure(1)
 	#plt.plot(Pathx,Pathy,'b',Refx,Refy,'rx',ACx,ACy,'go')
@@ -38,15 +40,22 @@ def Guide(Pathx,Pathy,Pathz,ACx,ACy,ACz,ACchi,ACv):
 	L1Vec.append(Refy - ACy)
 
 	#Find the angle of the L1 vector with respect to north (ie the course angle of the L1 vector)
-	L1Angle = math.acos(numpy.dot(North,L1Vec)/(numpy.linalg.norm(North,2)*numpy.linalg.norm(L1Vec)))
-	if L1Vec[1] < 0:
-		L1Angle = 2*math.pi-L1Angle
+	L1Angle = math.atan2(L1Vec[1],L1Vec[0])#math.acos(numpy.dot(North,L1Vec)/(numpy.linalg.norm(North,2)*numpy.linalg.norm(L1Vec,2)))
+	#if L1Vec[1] < 0:
+	#	L1Angle = 2*math.pi-L1Angle
 	#Find the angle eta = the difference between the L1 vector angle and the current course angle
 	eta = L1Angle - ACchi
+	#eta = numpy.mod(eta+numpy.pi,2*numpy.pi)-numpy.pi	
+	if numpy.absolute(eta) > numpy.pi:
+		if eta>numpy.pi:
+			eta = eta-2*numpy.pi
+		if eta<-numpy.pi:
+			eta = eta+2*numpy.pi	
+	#eta = ( eta1 + numpy.pi) % (2 * numpy.pi ) - numpy.pi
 	#Find the instantaneous radius of the path according 
 	R = L1/(2*math.sin(eta))
 
 	ChiDotDesired = ACv/R
 	DesiredAltitude = Pathz[MinIndex]
 	#print ChiDotDesired, DesiredAltitude
-	return ChiDotDesired, DesiredAltitude
+	return ChiDotDesired, DesiredAltitude, R, eta, L1Angle, L1Vec, Refx, Refy, TEST, TEST2
