@@ -72,7 +72,7 @@ lon0 = -105.2435532
 alt0 = 1680.38
 
 # gains
-KP_pitch = 1#0.3#Proportional gain for altitude to pitch
+KP_pitch = 1.0#0.3#Proportional gain for altitude to pitch
 KI_pitch = 0.3#0.03#Integral gain for altitude to pitch
 KD_pitch = 0.8#0.6#Derivative gain for vertical velocity to pitch
 KPR_pitch = 0.0 #Pitch Rate gain, currently unused
@@ -215,7 +215,7 @@ while True:
 		alt_int_err += time_step*( v.location.alt - (alt_target))
 	else:
 		alt_int_err = 0
-	if np.absolute(alt_target - v.location.alt) < 10 and np.absolute(climb_des) < 1.5:
+	if np.absolute(climb_des) < 1.5: #np.absolute(alt_target - v.location.alt) < 10 and 
 		alt_int_err = alt_int_err*0.95
 
 	#print 'alt err'
@@ -242,11 +242,11 @@ while True:
 
 
 	# add all terms for altitude control
-	pitch_cmd = KP_pitch * ( alt_target - v.location.alt) - KI_pitch*alt_int_err - KD_pitch * (v.velocity[2] - climb_des)- pitch_trim - KPR_pitch*v.angularRates[1] #system NEU?!?! # 
+	#pitch_cmd = KP_pitch * ( alt_target - v.location.alt) - KI_pitch*alt_int_err - KD_pitch * (v.velocity[2] - climb_des)- pitch_trim - KPR_pitch*v.angularRates[1] #system NEU?!?! # 
 	#print 'p cmd'
 	#print pitch_cmd
 	#print 'proportional'
-	#print [KP_pitch * ( alt_target - v.location.alt), - KI_pitch*alt_int_err, -KD_pitch * (v.velocity[2] - climb_des), climb_des]
+	print [KP_pitch * ( alt_target - v.location.alt), - KI_pitch*alt_int_err, -KD_pitch * (v.velocity[2] - climb_des), climb_des]
 	#print v.velocity[2]
 	#print 'integral'
 	#print -KI_pitch*alt_int_err
