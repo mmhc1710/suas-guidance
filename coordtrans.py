@@ -31,6 +31,14 @@ def lla2flat(lat,lon,alt,lat0,lon0,alt0): #convert postion at lat lon alt
 	z = X_flat[2][0]
 	return (x,y,z)
 
+def lla2flatdumb(lat,lon,alt,lat0,lon0,alt0):
+	re = 6378137;
+	re_c = re*cos((pi/180)*absolute(lat0))
+	x = (lon-lon0)*(re_c*pi)/180
+	y = (lat-lat0)*(re*pi)/180
+	z = alt-alt0
+ 	return (x,y,z)
+
 def flat2lla(x,y,z,lat0,lon0,alt0): #convert x,y,z to lat, lon, alt
 	re = 6378137;
 	re_c = re*cos((pi/180)*absolute(lat0))

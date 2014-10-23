@@ -22,7 +22,7 @@ ind = ind+1
 
 #for all the rows in the csv file, assign each datum to its appropriate variable
 for row in Reader:
-	(lat,lon,alt) = coordtrans.flat2lla( float(row[0]), float(row[1]), float(row[2]), lat0, lon0, alt0 )
+	(lat,lon,alt) = coordtrans.flat2lla(float(row[1]), float(row[0]), float(row[2]), lat0, lon0, alt0 )
 	alt = -(alt - alt0)
 	if ind % 10 == 0:
 		f.write("%s\t0\t3\t16\t0\t5\t0\t0\t%s\t%s\t%s\t1\n" % (ind,lat,lon,alt))

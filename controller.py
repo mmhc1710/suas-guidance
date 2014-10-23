@@ -13,8 +13,8 @@ import time
 import numpy as np
 from numpy  import *
 import csv
-import Guide #L1 logic
-from coordtrans import lla2flat #GPS to cartesian
+import Guide_nichols #L1 logic
+from coordtrans import * #GPS to cartesian
 from cmd_saturate import cmd_saturate #limits RC commands to saturation limits
 
 ###CONNECT TO AIRCRAFT (SITL)##########################################################
@@ -51,7 +51,7 @@ Pathy = []
 Pathz = []
 #for all the rows in the csv file, assign each datum to its appropriate variable
 for row in Reader:
-	Pathx.append(float(row[0]))
+	Pathx.append(float(row[0]))#NED!!!!!!!!!!!!!!!!!!!!
 	Pathy.append(float(row[1]))
 	Pathz.append(float(row[2]))
 	ind = ind + 1
@@ -112,7 +112,7 @@ print "Switching to FBWA Mode"
 v.mode = VehicleMode("FBWA")
 
 initial_t = time.time()
-
+flag1 = True
 loopcount = 0
 while True:
 	rollspeed = v.angularRates[0]
@@ -120,20 +120,27 @@ while True:
 	yawspeed = v.angularRates[2]
 	#print 'start'
 	###GPS COORDINATE TRANSFORM#################################################################
-	flat = lla2flat(v.location.lat,v.location.lon,v.location.alt,lat0,lon0,alt0)
+	flat = lla2flatdumb(v.location.lat,v.location.lon,v.location.alt,lat0,lon0,alt0)
 	X = flat[0] #ENU
 	Y = flat[1] #ENU
 	Z = flat[2] #ENU
+	#print [Y, X, -Z]
 	if (v.velocity[0] > 0) or (v.velocity[0] < 0): #may want to set this threshold higher at some point
-		Chi = np.arctan(v.velocity[1]/v.velocity[0]) #assuming zero path angle is aligned with x
+		Chi = np.arctan2(v.velocity[1],v.velocity[0]) #assuming zero path angle is aligned with x
 	else:
 		Chi = 0;
+	#print'Chi'
+	#print Chi*180/pi
 	############################################################################################
 	
 	###PATH FOLLOWING LOGIC (L1 GUIDANCE)############################################
-	#if loopcount %500 == 0:	
-	[turn_rate_des,z_target] = Guide.Guide(Pathx,Pathy,Pathz,Y,X,-Z,Chi,speed_desired) #NED
-	turn_rate_des = cmd_saturate(turn_rate_des,-0.2,0.2) #NED
+	#if loopcount %500 == 0:
+	if flag1:	
+		[turn_rate_des,z_target,MinIndex] = Guide_nichols.Guide(Pathx,Pathy,Pathz,Y,X,-Z,Chi,speed_desired) #NED
+		flag1 = False
+	else:
+		[turn_rate_des,z_target,Minjunk] = Guide_nichols.Guide(Pathx,Pathy,Pathz,Y,X,-Z,Chi,speed_desired,MinIndex)
+	turn_rate_des = cmd_saturate(turn_rate_des,0.3,-0.3) #NED
 	alt_target = alt0 - z_target #altitude positive but z down
 	#for holding turn rate/altitude, use lines below instead
 	#turn_rate_des = 0*pi/(180) #NED turn rate (positive CW)
@@ -147,8 +154,11 @@ while True:
 	#TODO would like to know angular rates (where are these in v?) in order to close turn rate 		control loop and add pitch rate damping to altitude control
 
 	#a = turn_rate_des*v.airspeed 
-
+	#print 'desired turn'
+	#print turn_rate_des
 	bankangle_r = np.arctan((turn_rate_des*v.airspeed)/g) 
+	#print 'bank'
+	#print bankangle_r*180/np.pi
 	theta = v.attitude.pitch
 	phi = v.attitude.roll
 	psi = v.attitude.yaw
@@ -215,7 +225,7 @@ while True:
 
 	#call control on FF position
 	
-	[turn_rate_ff,z_target_ff] = Guide.Guide(Pathx,Pathy,Pathz,X_ff,Y_ff,Z_ff,Chi_ff,speed_desired)
+	[turn_rate_ff,z_target_ff,crap] = Guide_nichols.Guide(Pathx,Pathy,Pathz,Y_ff,X_ff,-Z_ff,Chi_ff,speed_desired,MinIndex)
 	alt_des_ff = alt0 - z_target_ff
 	#determine climb rate needed
 	climb_des = (alt_des_ff - alt_target)/dt
