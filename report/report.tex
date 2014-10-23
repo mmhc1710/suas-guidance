@@ -1,6 +1,7 @@
 \documentclass{aiaa}
 \usepackage{color, soul}
 \providecommand{\e}[1]{\ensuremath{\times 10^{#1}}}
+%Format Python code pretty-like
 %From https://gist.github.com/kroger/6140188
 \usepackage{listings}
  
@@ -28,32 +29,43 @@
 \begin{document}
 \maketitle
 \begin{abstract}
-This project presents an implementation of Park, Dest, and How's nonlinear guidance algorithm in an ArduPlane environment. The algorihtm is implemented in Python, while the ArduPlane stock firmware code is utilized. Two levels of software simulation results are presented, a crude simulation using a Matlab environment and a software-in-the-loop (SITL) simulation using the actual autopilot code with a fixed-wing simulation engine backend.
+This project presents an implementation of Park, Dest, and How's nonlinear guidance algorithm in an ArduPlane environment. The algorithm is implemented in Python, while the ArduPlane stock firmware code is utilized. Two levels of software simulation results are presented, a basic simulation using a Matlab environment and a software-in-the-loop (SITL) simulation using the actual autopilot code with a fixed-wing simulation engine backend.
 \end{abstract}
 
 \section{Control Algorithm Design}
 \subsection{As-Published Algorithm}
-As published, the Park et al algorithm uses a lookahead distance to determine an intercept angle. The aircraft is then commanded via turn rate to achieve the desired trajectory.
+The path following algorithm is based of of the algorithm developed by Park et. al, as described in their paper, \textit{A New Nonlinear Guidance Logic for Trajectory Tracking}. This algorithm creates a turn rate proportional to the angle between the velocity vector of the aircraft and the position vector between the aircraft and the reference point, as shown in \Figure{park_overview}.
+\leftfig{figures/Park.pdf}{park_overview}{Illustration of the Park Control Law}
+
+This turn rate makes the aircraft follow an arced path towards the reference point. When the angle $\eta$ is large, the arc is small, so that the aircraft turns quickly towards the path. As the aircraft gets closer to the path, the value of $\eta$ decrease, decreasing the turn rate. When the aircraft's velocity lines up with the $L_1$ vector, the turn rate is zero.
+
+$L_1$ is a fixed distance parameter that can be tuned to meet the requirements of a specific path or aircraft. Smaller $L_1$ values track the path more closely, but aircraft dynamics will limit the algorithm's effectiveness. If $L_1$ is too small, the turn rates may be unrealizable by the system. $L_1$ is also the maximum distance from the path that this control law applies, as it is not possible to choose a reference point on the path at a distance $L_1$ from the aircraft if the minimum distance from the aircraft to the path is greater than $L_1$.
+
 \subsection{Custom Adjustments}
-Park et al do not include a means of providing altitude control. As part of the teams's modifications to the base algorithm, we have implemented a proportional-integral-derivative controller around climb rate.  
+The Park algorithm is implemented with several modifications needed for a practical realization.
+
+\subsubsection{Horizontal Vs. Vertical Tracking}
+ Our implementation uses the Park algorithm to control the horizontal tracking of the path, and a proportional-integral-derivative (PID) controller is used to control the altitude of the aircraft. Because of this decoupling between climb performance and turn performance, the vertical speed is not accounted for in the calculation of the tracking speed, and the horizontal tracking speed (and thus the commanded airspeed) is just the tracking speed input parameter.
+
+\subsubsection{Path Discretization}
+Another modification is the usage of a discrete set of points instead of an analytical path. The reference point is chosen as the first point on the path at or forward of the previous reference point that is at least $L_1$ meters away from the aircraft. If the interval between the points is small, this method works quite well and avoids the necessity of creating an analytic model of the path, which could be very difficult for more complex shapes. 
+
+Another advantage of using discrete points is that it allows the aircraft to head towards the path from any distance away. When the algorithm is first initiated, it finds the closest point on the path to the aircraft, and uses that as its first reference point. While the distance between the aircraft and the closest point is greater than $L_1$, the algorithm will continue to choose that first point as its reference point, as it is the first point that is at or forward of the previous reference point that is farther than $L_1$ meters away from the aircraft. 
+This means that the aircraft will turn towards the closest point and approach it at a constant speed, and once it is within $L_1$ meters of the path it will start turning to follow the path. 
+
+\subsubsection{Command Translation}
 \hl{
-Using algorithm even > l1 distance away - Sets reference point to closest point on the path
-
-Discretized the path (not analytical)
-
-airspeed / turn rate / desired altitude close enough to the original value 
-
 command translation from algorithm to FBWA commands -> roll, pitch, throttle setting: speed hold loops (P+feedforward on pitch), PID on altitude, turn rate: feedforward to roll + propoertional gain
-
 
 damping of pitch motions based on pitch rate to avoid divergence
 }
 \section{MATLAB Simulation Results}
-\hl{
-Based on Matt's homework with a proportional altitude controller
-}
+This algorithm was validated using several different ellipses and starting points using a unicycle model of the aircraft dynamics. The Simulink model is presented as \Figure{park_simulink}. $L_1$ was set to 10 meters, and the tracking speed parameter was set to be 20 m/s.  In each case, the aircraft approached the path and then tracked it with an average horizontal distance error of about 1 meter. A representative flight path is depicted in \Figure{park_ellipse}, with the associated off-track error in \Figure{park_ellipse_error}.
+\centerfig{figures/ParkSimulink.pdf}{park_simulink}{MATLAB Park Algorithm Simulink Block Diagram} 
+\sidebyside{figures/park_tilt_ellipse_path-crop.pdf}{park_ellipse}{Quality of Aircraft Tracking Over a Tilted Elliptical Flight Path}
+{figures/park_tilt_ellipse_error-crop.pdf}{park_ellipse_error}{Off-Track Error While Tracking a Tilted Elliptical Flight Path}
 \section{Architecture Block Diagrams}
-Our guidance code is implemented at a high level, running aboard the supervisory computer on-board the aircraft, as shown in \Figure{sys-arch}. Control over our guidance code is accomplished via the WiFi link to the onboard computer, while the guidance code communicates via MAVLink to the Pixhawk autopilot. From the autopilot's perspective, the guidance code is simply another MAVLink-compliant consumer of messages. 
+Our guidance code is implemented at a high level, running aboard the supervisory computer on-board the aircraft, as shown in \Figure{sys-arch}. Control over our guidance code is accomplished via the WiFi link to the onboard computer, while the guidance code communicates via MAVLink to the Pixhawk autopilot. From the autopilot's perspective, the guidance code is simply another MAVLink-compliant message client. 
 \centerfig{figures/System-Architecture.pdf}{sys-arch}{Overall System Architecture}
 \subsection{Pixhawk Autopilot}
 In our system, the Pixhawk autopilot is running an unmodified ArduPilot firmware.
@@ -70,7 +82,7 @@ The navigation module assumes that the path to follow meets the format presented
 The GPS point translation module transforms the current pose of the aircraft in the world frame (given by the autopilot's extended Kalman filter) into the local frame set by Dr. Frew's datum.
   
 \subsubsection{Guidance Command Generation}
-The guidance command generation module uses the Park L1 algorithm to generate a desired yaw for the aircraft, given the current pose in local coordinates and the path to be followed as a set of discrete points in local coordinates.
+The guidance command generation module uses the Park $L_1$ algorithm to generate a desired yaw for the aircraft, given the current pose in local coordinates and the path to be followed as a set of discrete points in local coordinates.
 
 \subsubsection{Flight Directive Generation}
 Given a desired yaw angle and a desired altitude, the flight directive generator implements several controllers to reach the desired references. These controllers prepare a command vector to be given to the autopilot under fly-by-wire-A. 
@@ -96,7 +108,7 @@ Our guidance logic assumes that the aircraft is already in flight in the MANUAL 
 \subsubsection{Guidance Activate Actions}
 \begin{enumerate}
 	\item Start the navigation module within DroneAPI: \\
-	\textit{api start controller.py}
+	\textit{api start ./suas-guidance/controller.py}
 	\item Report navigation engaged to operations team
 \end{enumerate}
 \subsubsection{Guidance Disengage Actions}
@@ -114,9 +126,9 @@ The lost communications plan allows our controller to command an aerodynamic ter
 \hl{
 Written in python2.7
 
-L1 provides guidance logic, PID for everything else for alt/turn rate
+$L_1$ provides guidance logic, PID for everything else for alt/turn rate
 
-L1 formular that produces a value for a given state: reference values
+$L_1$ formular that produces a value for a given state: reference values
 
 Controllers actually make the reference values track
 
