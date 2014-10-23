@@ -9,7 +9,7 @@ lat0 = 40.1447601
 lon0 = -105.2435532
 alt0 = 1680.38
 
-Reader = csv.reader(open(currentdir + 'tilted_ellipse.csv', 'rv'))#create reader object
+Reader = csv.reader(open(currentdir + 'potatochip.csv', 'rv'))#create reader object
 ind = 0#initialize ind, Pathx, Pathy and Pathz
 
 #open write file

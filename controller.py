@@ -31,8 +31,8 @@ v.parameters['RC2_MAX'] = 2000
 v.parameters['RC2_MIN'] = 1000
 v.parameters['RC3_MAX'] = 2000
 v.parameters['RC3_MIN'] = 1000
-v.parameters['LIM_PITCH_MIN'] = -2000
-v.parameters['LIM_PITCH_MAX'] = 2500
+v.parameters['LIM_PITCH_MIN'] = -3000
+v.parameters['LIM_PITCH_MAX'] = 3000
 v.parameters['LIM_ROLL_CD'] = 6500
 v.parameters['RLL2SRV_D'] = 0.137
 v.parameters['RLL2SRV_I'] = 0.133
@@ -44,7 +44,7 @@ v.parameters['PTCH2SRV_P'] = 3.321
 
 ###IMPORT CSV PATH######################################################################
 #Read In Path
-Reader = csv.reader(open(currentdir + 'tilted_ellipse.csv', 'rv'))#create reader object
+Reader = csv.reader(open(currentdir + 'potatochip.csv', 'rv'))#create reader object
 ind = 0#initialize ind, Pathx, Pathy and Pathz
 Pathx = []
 Pathy = []
@@ -72,8 +72,8 @@ lon0 = -105.2435532
 alt0 = 1680.38
 
 # gains
-KP_pitch = 0.5#0.3#Proportional gain for altitude to pitch
-KI_pitch = 0.03#0.03#Integral gain for altitude to pitch
+KP_pitch = 1#0.3#Proportional gain for altitude to pitch
+KI_pitch = 0.3#0.03#Integral gain for altitude to pitch
 KD_pitch = 0.8#0.6#Derivative gain for vertical velocity to pitch
 KPR_pitch = 0.0 #Pitch Rate gain, currently unused
 
@@ -84,7 +84,7 @@ KFF_throttle = 350.0#20.0
 KP_roll = 13.0 #deg/(rad/s)
 
 #altitude integrator wind-up limit
-alt_int_max = 140
+alt_int_max = 100
 
 RC1_MAX = v.parameters['RC1_MAX']
 RC1_MIN = v.parameters['RC1_MIN']
@@ -124,6 +124,7 @@ while True:
 	X = flat[0] #ENU
 	Y = flat[1] #ENU
 	Z = flat[2] #ENU
+	#print Z
 	#print [Y, X, -Z]
 	if (v.velocity[0] > 0) or (v.velocity[0] < 0): #may want to set this threshold higher at some point
 		Chi = np.arctan2(v.velocity[1],v.velocity[0]) #assuming zero path angle is aligned with x
@@ -142,6 +143,7 @@ while True:
 		[turn_rate_des,z_target,Minjunk] = Guide_nichols.Guide(Pathx,Pathy,Pathz,Y,X,-Z,Chi,speed_desired,MinIndex)
 	turn_rate_des = cmd_saturate(turn_rate_des,0.3,-0.3) #NED
 	alt_target = alt0 - z_target #altitude positive but z down
+	#print Z + z_target
 	#for holding turn rate/altitude, use lines below instead
 	#turn_rate_des = 0*pi/(180) #NED turn rate (positive CW)
 	#alt_target = start_alt + (time.time()-initial_t)*5 #ENU alt (positive up)
@@ -187,14 +189,34 @@ while True:
 	#############################################################################################
 
 	###ALTITUDE CONTROLLER (PID with climb rate feed forward)####################################
-
+	
+	#feed forward term
+	#feed forward position
+	dt = 1
+	X_ff = X + v.velocity[1]*dt
+	Y_ff = Y + v.velocity[0]*dt
+	Z_ff = Z + v.velocity[2]*dt #velocity comes out in NEU
+	Chi_ff = Chi + turn_rate*dt
+	
+		#call control on FF position
+	
+	[turn_rate_ff,z_target_ff,crap] = Guide_nichols.Guide(Pathx,Pathy,Pathz,Y_ff,X_ff,-Z_ff,Chi_ff,speed_desired,MinIndex)
+	alt_des_ff = alt0 - z_target_ff
+	#determine climb rate needed
+	climb_des = (alt_des_ff - alt_target)/dt
+	
+	
 	time_step = time.time() - prev
 	#print 'time step'
 	#print time_step
 	prev = time.time()
-
-	alt_int_err += time_step*( v.location.alt - (alt_target))
-
+	
+	if alt_target - v.location.alt < 20 and alt_target - v.location.alt > -25:
+		alt_int_err += time_step*( v.location.alt - (alt_target))
+	else:
+		alt_int_err = 0
+	if np.absolute(alt_target - v.location.alt) < 10 and np.absolute(climb_des) < 1.5:
+		alt_int_err = alt_int_err*0.95
 
 	#print 'alt err'
 	#print v.location.alt - (1680+alt_target)
@@ -202,7 +224,7 @@ while True:
 	#print alt_int_err
 	#print 'alt'
 	#print v.location.alt
-
+	
 	if alt_int_err > alt_int_max:
 		alt_int_err = alt_int_max
 	if alt_int_err < -alt_int_max:
@@ -210,32 +232,22 @@ while True:
 	#print 'alt target'
 	#print 1680+alt_target
 
-	#feed forward term
-	#feed forward position
-	dt = 0.1
-	X_ff = X + v.velocity[0]*dt
-	Y_ff = Y + v.velocity[1]*dt
-	Z_ff = Z - v.velocity[2]*dt #velocity comes out in NEU
-	Chi_ff = Chi + turn_rate*dt
+
 	#t_ff = time.time() + dt #feed forward time (if needed)
 	#print X_ff - X
 	#print Y_ff - Y
 	#print Z_ff - Z
 	#print v.airspeed
 
-	#call control on FF position
-	
-	[turn_rate_ff,z_target_ff,crap] = Guide_nichols.Guide(Pathx,Pathy,Pathz,Y_ff,X_ff,-Z_ff,Chi_ff,speed_desired,MinIndex)
-	alt_des_ff = alt0 - z_target_ff
-	#determine climb rate needed
-	climb_des = (alt_des_ff - alt_target)/dt
+
 
 	# add all terms for altitude control
-	pitch_cmd = KP_pitch * ( alt_target - v.location.alt) - KI_pitch*alt_int_err - KD_pitch * (v.velocity[2] - 0*climb_des)- pitch_trim - KPR_pitch*v.angularRates[1] #system NEU?!?! # 
+	pitch_cmd = KP_pitch * ( alt_target - v.location.alt) - KI_pitch*alt_int_err - KD_pitch * (v.velocity[2] - climb_des)- pitch_trim - KPR_pitch*v.angularRates[1] #system NEU?!?! # 
 	#print 'p cmd'
 	#print pitch_cmd
 	#print 'proportional'
-	#print KP_pitch * ( alt_target - v.location.alt) 
+	#print [KP_pitch * ( alt_target - v.location.alt), - KI_pitch*alt_int_err, -KD_pitch * (v.velocity[2] - climb_des), climb_des]
+	#print v.velocity[2]
 	#print 'integral'
 	#print -KI_pitch*alt_int_err
 	#print 'derivative'
