@@ -246,7 +246,7 @@ while True:
 	#print 'p cmd'
 	#print pitch_cmd
 	#print 'proportional'
-	print [KP_pitch * ( alt_target - v.location.alt), - KI_pitch*alt_int_err, -KD_pitch * (v.velocity[2] - climb_des), climb_des]
+	#print [KP_pitch * ( alt_target - v.location.alt), - KI_pitch*alt_int_err, -KD_pitch * (v.velocity[2] - climb_des), climb_des]
 	#print v.velocity[2]
 	#print 'integral'
 	#print -KI_pitch*alt_int_err
