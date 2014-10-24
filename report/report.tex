@@ -34,7 +34,7 @@ This project presents an implementation of Park, Dest, and How's nonlinear guida
 
 \section{Control Algorithm Design}
 \subsection{As-Published Algorithm}
-The path following algorithm is based of of the algorithm developed by Park et. al, as described in their paper, \textit{A New Nonlinear Guidance Logic for Trajectory Tracking}. This algorithm creates a turn rate proportional to the angle between the velocity vector of the aircraft and the position vector between the aircraft and the reference point, as shown in \Figure{park_overview}.
+The path following algorithm is based off of the algorithm developed by Park et. al, as described in their paper, \textit{A New Nonlinear Guidance Logic for Trajectory Tracking}. This algorithm creates a turn rate proportional to the angle between the velocity vector of the aircraft and the position vector between the aircraft and the reference point, as shown in \Figure{park_overview}.
 \leftfig{figures/Park.pdf}{park_overview}{Illustration of the Park Control Law}
 
 This turn rate makes the aircraft follow an arced path towards the reference point. When the angle $\eta$ is large, the arc is small, so that the aircraft turns quickly towards the path. As the aircraft gets closer to the path, the value of $\eta$ decrease, decreasing the turn rate. When the aircraft's velocity lines up with the $L_1$ vector, the turn rate is zero.
@@ -81,7 +81,7 @@ The Park algorithm was validated using several different ellipses and starting p
 Our guidance code is implemented at a high level, running aboard the supervisory computer on-board the aircraft, as shown in \Figure{sys-arch}. Control over our guidance code is accomplished via the WiFi link to the onboard computer, while the guidance code communicates via MAVLink to the Pixhawk autopilot. From the autopilot's perspective, the guidance code is simply another MAVLink-compliant message client. 
 \centerfig{figures/System-Architecture.pdf}{sys-arch}{Overall System Architecture}
 \subsection{Pixhawk Autopilot}
-In our system, the Pixhawk autopilot is running an unmodified ArduPilot firmware.
+In our system, the Pixhawk autopilot is running an unmodified ArduPilot firmware. This is beneficial since the guidance algorithm implementation can theoretically be used with any autopilot compatible with MAVLink.
 \subsection{Ground Control Station}
 The ground control station (GCS) is assumed to be running a MAVLink-compatible planner software, such as \textit{APMPlanner2}. Should the operations team decide to utilize a GCS heartbeat check, the heartbeat will be provided by the GCS MAVLink client so as to detect problems in the 915MHz serial link between the vehicle and the ground. 
 \subsection{Supervisory Computer}
@@ -90,7 +90,7 @@ The supervisory computer is running a distribution of Linux with Python 2.7 and 
 \subsection{Processing Breakdown}
 The navigation module consists of a number of Python modules running within DroneAPI that implements all required code. 
 \subsubsection{Point Reading}
-The navigation module assumes that the path to follow meets the format presented by Dr. Frew in class, in a comma-separated-value (CSV) formatted ASCII file. The points along the path are presented in a local north-east-down coordinate frame and are assumed to wrap together to form a closed path. 
+The navigation module assumes that the path to follow meets the format presented by Dr. Frew in class, in a comma-separated-value (CSV) formatted ASCII file. The points along the path are presented in a local east-north-up coordinate frame and are assumed to wrap together to form a closed path. A conversion routine translates these points into a north-east-down frame.
 \subsubsection{GPS Point Translation}
 The GPS point translation module transforms the current pose of the aircraft in the world frame (given by the autopilot's extended Kalman filter) into the local frame set by Dr. Frew's datum.
   
@@ -176,6 +176,16 @@ Difference in pitch trim vs elevator deflection - used stabilize mode instead
 }
 
 \section{SITL Simulation Results}
+Several SITL simulation results are included, starting the aircraft from a different initial position. Each results concludes with the aircraft reaching the path. The tracking results are from the entire telemetry file, including an initial portion where the aircraft was travelling to the starting position, at which point the guidance controller was engaged. The error plots are limited to the simulation results where the aircraft has acquired the path.
+\subsection{Start: Inside The Chip}
+\centerfig{figures/inside_chip_path-crop.pdf}{inside_chip}{Tracking performance starting inside the chip}
+\centerfig{figures/inside_chip_path_error-crop.pdf}{inside_chip_error}{Off-Track error, starting inside the chip}
+\subsection{Start: Outside The Chip}
+\centerfig{figures/outside_chip_path-crop.pdf}{outside_chip}{Tracking performance starting outside the chip}
+\centerfig{figures/outside_chip_path_error-crop.pdf}{outside_chip_error}{Off-Track error, starting outside the chip}
+\subsection{Start: Above and Outside The Chip}
+\centerfig{figures/above_outside_chip_path-crop.pdf}{above_outside_chip}{Tracking performance starting above and outside the chip}
+\centerfig{figures/above_outside_chip_path_error-crop.pdf}{above_outside_chip_error}{Off-Track error, starting above and outside the chip}
 \hl{
 Plots of tracking error vs path 
 Ellipse following
