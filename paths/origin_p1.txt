@@ -1,0 +1,6 @@
+origin location
+
+lat 40.138554 deg
+lon -105.2418303 deg
+alt 5516 ft 
+

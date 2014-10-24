@@ -2,8 +2,7 @@ import math
 import csv
 import numpy
 import matplotlib.pyplot as plt
-#import FindInt
-import FindInt_nichols
+import FindInt
 import time
 def Angle_wrap(eta):
 	if numpy.absolute(eta) > numpy.pi:
@@ -29,28 +28,19 @@ def Guide(Pathx,Pathy,Pathz,ACx,ACy,ACz,ACchi,ACv,MinIndex = -1):
 	Dist = []
 	PX = numpy.array(Pathx)
 	PY = numpy.array(Pathy)
-	
-	#Path_diff = array([PX-ACStatex,PY-ACStatey,PZ-ACStatez])
-	#Path_diff = numpy.transpose(Path)
+
 	Dist = numpy.sqrt((PX-ACx)**2 + (PY-ACy)**2)
 
 
 	if MinIndex == -1:
 		MinIndex = numpy.argmin(Dist)#The closest point is the one with the minimum distance
 	MinIndex1 = numpy.argmin(Dist)
-	#print len(Dist)
-	
-	#print 'distance to path'
 
-	#print 'vector displacement from path'
-	#print ACx - Pathx[MinIndex1]
-	#print ACy - Pathy[MinIndex1]
 	if Dist[MinIndex1] < L1*1.2:
-		#print 'in L1'
 		MinIndex = numpy.argmin(Dist)#The closest point is the one with the minimum distance
 		#print 'are we slow?'
 		#find the indicies of all points sorted by 
-		dist_inds = FindInt_nichols.dist_inds(L1,Pathx,Pathy,ACx,ACy,ACz,ACchi)
+		dist_inds = FindInt.dist_inds(L1,Pathx,Pathy,ACx,ACy,ACz,ACchi)
 		dist_inds = dist_inds[range(20)]
 		#number of points
 		length = dist_inds.shape[0] #MAKE SURE THAT dist_inds is a 1D array
@@ -74,47 +64,32 @@ def Guide(Pathx,Pathy,Pathz,ACx,ACy,ACz,ACchi,ACv,MinIndex = -1):
 			ind_diff_pos_sort = numpy.sort(ind_diff_pos_trun)
 			index_ref = ind_diff_pos_sort[0] + MinIndex
 	else:
-		#print 'not in L1'
 		index_ref = MinIndex#If we are further than L1 away from any point on the path, use the closest point as the 	
 
 	#index_ref = 0
 	#print Dist[index_ref]
 	Refx = Pathx[index_ref]#referece point
 	Refy = Pathy[index_ref]
+
 	#Solve for nonlinear logic parameters
 	L1Vec = []#Get the L1 vector
 	L1Vec.append(Refx - ACx)
 	L1Vec.append(Refy - ACy)
-	#print 'target position'
-	#print [Refx, Refy, 0]
 
 	#Find the angle of the L1 vector with respect to north (ie the course angle of the L1 vector)
 	L1Angle = math.atan2(L1Vec[1],L1Vec[0])#math.acos(numpy.dot(North,L1Vec)/(numpy.linalg.norm(North,2)*numpy.linalg.norm(L1Vec,2)))
-	#if L1Vec[1] < 0:
-	#	L1Angle = 2*math.pi-L1Angle
+
 	#Find the angle eta = the difference between the L1 vector angle and the current course angle
-	eta = L1Angle - ACchi
-	#eta = numpy.mod(eta+numpy.pi,2*numpy.pi)-numpy.pi	
+	eta = L1Angle - ACchi	
 	if eta>numpy.pi:
 		eta = eta-2*numpy.pi
 	if eta<-numpy.pi:
-		eta = eta+2*numpy.pi	
-	#eta = ( eta1 + numpy.pi) % (2 * numpy.pi ) - numpy.pi
+		eta = eta+2*numpy.pi
+
 	#Find the instantaneous radius of the path according 
 	R = L1/(2*numpy.sin(eta))
 
 	ChiDotDesired = ACv/R
-	#print "eta"
-	#print eta
-	#print 'L1Angle'
-	#print L1Angle
-	#print "sineta"
-	#print math.sin(eta)
-	#print "L1"
-	#print L1
-	#print "CHIDOTDESIRED"
-	#print ChiDotDesired
-	#print "R"
-	#print R
+
 	DesiredAltitude = Pathz[MinIndex1]
 	return ChiDotDesired, DesiredAltitude, MinIndex
