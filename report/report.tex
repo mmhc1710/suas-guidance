@@ -144,10 +144,11 @@ The guidance and control algorithms are implemented entirely on the supervisory 
 \subsubsection{Initilization}
 
 
-The control script first sets the pulse width modulation (PWM) limits of the RC override for the bank angle, pitch angle, and throttle commands in FBWA mode. The PWM limits and the corresponding physical limits are shown in Table.
+The control script first sets the pulse width modulation (PWM) limits of the RC override for the bank angle, pitch angle, and throttle commands in FBWA mode. The PWM limits and the corresponding physical limits are shown in \ref{table:RCval}.
 
 \begin{center}
 \begin{tabular}{ l| c | c | c | c| c | c}
+\label{table:RCval}
 	
      RC Channel & $RC_{min}$ & $RC_{zero}$ & $RC_{max}$ & Min. Value & Zero Value & Max. Value \\
     \hline \hline
@@ -278,13 +279,13 @@ Next, the angle $\eta$ between the aircrafts heading and the L1 vector is determ
 	\eta = \arctan{\frac{L_{1,y}}{L_{1,x}}} - \chi
 \end{equation}
 
-The desired lateral accelaration is then determined by
+The desired lateral acceleration is then determined by
 
 \begin{equation}
 	a_{s,cmd} = 2\frac{v^2}{L_1}\sin{\eta}
     \end{equation}
     
-    By relating this lateral acceleration to the centripital acceleration, the instantaneous radius of the required path is
+    By relating this lateral acceleration to the centripetal acceleration, the instantaneous radius of the required path is
     
     \begin{equation}
     R = \frac{L_1}{2\sin{\eta}}
@@ -343,9 +344,10 @@ RC1_{cmd} = 50*\phi_{cmd}*(RC1_{max} - RC1_{min})/\phi_{lim} + RC1_{zero}
 
 \subsubsection{Altitude Controller}
 
-The guidance logic obtains the desired altitude $h_{des}$ of the aircraft directly from the z-component in the CSV file describing the desired path. This value is then passed to the altitude controller implemented in the DroneAPI script. The altitude controller uses PID control with a feedforward term on the pitch. The gains are
+The guidance logic obtains the desired altitude $h_{des}$ of the aircraft directly from the z-component in the CSV file describing the desired path. This value is then passed to the altitude controller implemented in the DroneAPI script. The altitude controller uses PID control with a feed-forward term on the pitch. The gains are shown in \ref{table:alt_gains}.
 \begin{center}
 \begin{tabular}{ l| c | r}
+\label{table:alt_gains}
 	
     $K_{P,\theta}$ & $K_{I,\theta}$ & $K_{D,\theta}$ \\
     \hline \hline
@@ -355,7 +357,7 @@ The guidance logic obtains the desired altitude $h_{des}$ of the aircraft direct
 
 \end{tabular}
 \end{center}
-The climb-rate feedforward term is calculated by predicting the aircraft's future state based upon the current position and velocity as
+The climb-rate feed-forward term is calculated by predicting the aircraft's future state based upon the current position and velocity as
 
 \begin{equation}
 X_{FF} = X_{AC} + v_{airspeed}*\cos{\chi}*\Delta t
