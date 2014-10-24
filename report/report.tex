@@ -54,13 +54,26 @@ Another advantage of using discrete points is that it allows the aircraft to hea
 This means that the aircraft will turn towards the closest point and approach it at a constant speed, and once it is within $L_1$ meters of the path it will start turning to follow the path. 
 
 \subsubsection{Command Translation}
-\hl{
-command translation from algorithm to FBWA commands -> roll, pitch, throttle setting: speed hold loops (P+feedforward on pitch), PID on altitude, turn rate: feedforward to roll + propoertional gain
+Beneath the guidance control layer another set of controls translates the guidance commands of altitude, turn rate and airspeed into roll, pitch and throttle commands which can be entered into fly-by-wire-A (FBWA) mode as RC inputs. There are 3 separate control loops to accomplish this. The first is an altitude to pitch PID controller. The proportional command is implemented simply by subtracting the aircraft's current altitude from the current altitude target and then multiplying by a gain to generate a pitch command. 
 
-damping of pitch motions based on pitch rate to avoid divergence
-}
+The integral control implementation is more complex. Basic forward Euler integration is performed on the altitude error to add up the integrated error and a gain is applied. One significant drawback of integral control is integrator wind up which can result in significant overshoot behavior in the controlled system. Two measures are taken in the controller to avoid this. First, integral control is only used when the aircraft is within 30m of the desired target altitude. This is achieved by manually setting the integrated error to zero when the aircraft is outside this range. Thus, the integrator is reset any time the aircraft leaves this envelope. Resetting the integrator has no practical effect on performance in these conditions because the proportional controller will saturate (command the maximum possible pitch) in these conditions; additional pitch commanded by the integrator would have no effect. However, resetting the error prevents a large integrated error from building up in the initial stages of a mission while the aircraft is traveling to the desired path. The second step taken to prevent significant overshoot related to wind-up is to clear the integrated error (by setting it to zero) when the desired path is nearly flat. In these situations, the PD elements of the controller provide good performance without the integral element; this prevents the integral control from causing an overshoot at the top of a climbing section of a path.
+
+The derivative control term applies a gain to the difference between the current and desired climb rates.  This gain helps to damp the behavior commanded from the PI terms. The current climb rate is directly available from the aircraft state. The desired climb rate is computed by predicting the future state of the aircraft using a simple forward Euler approximation and then calling the guidance control function on that state to obtain the desired altitude at that future time. The difference between this feed-forward desired altitude and the current desired altitude is then divided by the small time delta over which the state was integrated.
+
+A further change made in the altitude control strategy was to increase the saturation pitch angle values to $\pm$ 30 degrees in order to achieve sufficient climb and descent rates on complex paths.
+
+To command throttle, a simple proportional control on the airspeed is augmented with a feed forward from the sine of the pitch angle. As the aircraft pitches up, gravity begins to oppose the thrust force of the aircraft. The gravity force along the body $x$ axis is proportional to the sine of the pitch angle. By commanding extra throttle with a gain applied to the sine of the pitch angle, the aircraft applies additional throttle before the airspeed decays due to climb initiation.
+
+The roll angle is commanded in a similar manner to the throttle. A feed forward roll is calculated from the requirement that the aircraft be rolled to direct a component of the lift force toward the center of the desired turn sufficient to achieve the correct turn rate. This feed-forward term is supplemented by a proportional gain applied to the difference between the current and desired turn rates. The turn rate cannot be easily measured so the yaw rate is used instead. In slowly varying wind conditions, these rates will be similar, so the yaw rate is a reasonable substitute for the true turn rate. In more complex wind environments, the turn rate could potentially be determined by filtering the turn angle data but in most cases the yaw rate is likely superior to filtering the derivative of noisy turn angle data. The yaw rate is determined by multiplying the aircraft body frame to global inertial frame rotation matrix by the angular velocity of the aircraft. Since the yaw rate is the rotation rate about the global frame $z$ axis, simply taking the third element of the resulting vector gives the yaw rate. The yaw rate is also used in the feed-forward state calculation used by the pitch controller.
+
+Once the desired angles are determined, each angle is converted to an RC channel command. These commands are determined based on the channel limits in the aircraft parameter files, then translating these limits to the saturation limits of the aircraft such that a maximum RC command yields the saturation limit of the input. For example, applying a command value of 2000 to RC channel 1 requests 65 degrees of roll.  Saturation is applied to the RC commands to keep them within the limits before they are passed into the FBWA mode, even though saturation is also applied in the aircraft simulation. This limiting action avoids a crash that can occur if very large commands are passed.
+
+Once a command is passed to the FBWA mode, the autopilot uses its own internal PID control loops to generate the appropriate RC servo commands. The gains for these controls are set to a default which provides stable but very poor control. In order to improve performance, these gains must be tuned. This tuning was conducted using the autotune function of the Pixhawk with a custom Python script which commanded a series of very hard roll and pitch commands required by the autotune mode to select the gains. Two autotune iterations were run to generate the gains used in simulation. While autotune gains are not as good as those that are refined by manual tuning, the limitations of the available input devices into the SITL simulation made manual tuning impractical.
+
+In order to set up the control laws, the trim state of the aircraft was needed, specifically trim pitch and trim throttle conditions (as trim roll for an undamaged symmetric aircraft should be zero). These states were determined by passing various simple commands to the aircraft and attempting to achieve steady level flight at the desired airspeed. Given the input limitations, trimming proved challenging and the final values selected provided adequate performance, but likely differ significantly from the true values for a real aircraft.
+
 \section{MATLAB Simulation Results}
-This algorithm was validated using several different ellipses and starting points using a unicycle model of the aircraft dynamics. The Simulink model is presented as \Figure{park_simulink}. $L_1$ was set to 10 meters, and the tracking speed parameter was set to be 20 m/s.  In each case, the aircraft approached the path and then tracked it with an average horizontal distance error of about 1 meter. A representative flight path is depicted in \Figure{park_ellipse}, with the associated off-track error in \Figure{park_ellipse_error}.
+The Park algorithm was validated using several different ellipses and starting points using a unicycle model of the aircraft dynamics. The Simulink model is presented as \Figure{park_simulink}. $L_1$ was set to 10 meters, and the tracking speed parameter was set to be 20 m/s.  In each case, the aircraft approached the path and then tracked it with an average horizontal distance error of about 1 meter. A representative flight path is depicted in \Figure{park_ellipse}, with the associated off-track error in \Figure{park_ellipse_error}.
 \centerfig{figures/ParkSimulink.pdf}{park_simulink}{MATLAB Park Algorithm Simulink Block Diagram} 
 \sidebyside{figures/park_tilt_ellipse_path-crop.pdf}{park_ellipse}{Quality of Aircraft Tracking Over a Tilted Elliptical Flight Path}
 {figures/park_tilt_ellipse_error-crop.pdf}{park_ellipse_error}{Off-Track Error While Tracking a Tilted Elliptical Flight Path}
@@ -123,12 +136,21 @@ Our guidance logic assumes that the aircraft is already in flight in the MANUAL 
 \subsection{Lost Communications Plan}
 The lost communications plan allows our controller to command an aerodynamic termination in the event that signals from the RC radio are not received. The \textbf{DroneAPI} source was modified to present the \textit{rssi} field to client code, representing the received signal strength indication as measured by the Pixhawk autopilot. When the \textit{rssi} drops below a certain threshold, fly-by-wire 'A' mode is engaged, with a throttle override set to the minimum value. The controller then stops sending any additional commands, but stays on-line to monitor whether communications is re-established. If the RC link is re-established, the code can disengage the aerodynamic termination override and set the autopilot back to 'MANUAL' mode, where the RC radio commands are passed through to the control surface servos.
 \subsection{Software Sections}
+
+\subsubsection{DroneAPI Modifications}
+In order to provide state information necessary for our implementation of the park algorithm, the DroneAPI code had to be modified. The default ArduPilot firmware provides a rich telemetry set, but several key parameters are not exposed to modules running within the DroneAPI framework. Minor changes were required to expose the following parameters:
+\begin{enumerate}
+	\item \textit{rssi}: The radio signal strength indication parameter was necessary to implement the lost communications plan
+	\item \textit{pitchspeed}, \textit{yawspeed}, and \textit{rollspeed}: The angular rate information was necessary to assist the command translation module in generating appropriate RC commands.
+
+\end{enumerate}
 \hl{
+%Apparently the highlight environment screws with page numbering...
 Written in python2.7
 
-$L_1$ provides guidance logic, PID for everything else for alt/turn rate
+L1 provides guidance logic, PID for everything else for alt/turn rate
 
-$L_1$ formular that produces a value for a given state: reference values
+L1 formular that produces a value for a given state: reference values
 
 Controllers actually make the reference values track
 
@@ -143,8 +165,6 @@ Why not FBWB? (Alt controller was garbage)
 Lat/lon converter
 
 Sat limiter
-
-DroneAPI mods 
 
 used autotune to find gains
 
