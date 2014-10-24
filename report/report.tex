@@ -54,22 +54,29 @@ Another advantage of using discrete points is that it allows the aircraft to hea
 This means that the aircraft will turn towards the closest point and approach it at a constant speed, and once it is within $L_1$ meters of the path it will start turning to follow the path. 
 
 \subsubsection{Command Translation}
-Beneath the guidance control layer another set of controls translates the guidance commands of altitude, turn rate and airspeed into roll, pitch and throttle commands which can be entered into fly-by-wire-A (FBWA) mode as RC inputs. There are 3 separate control loops to accomplish this. The first is an altitude to pitch PID controller. The proportional command is implemented simply by subtracting the aircraft's current altitude from the current altitude target and then multiplying by a gain to generate a pitch command. 
+Beneath the guidance control layer another set of controls translates the guidance commands of altitude, turn rate and airspeed into roll, pitch and throttle commands which can be entered into fly-by-wire-A (FBWA) mode as RC inputs. There are 3 separate control loops to accomplish this task. 
 
+\subsubsection{Altitude Controller}
+The first is an altitude to pitch PID controller. The proportional command is implemented simply by subtracting the aircraft's current altitude from the current altitude target and then multiplying by a gain to generate a pitch command. 
 The integral control implementation is more complex. Basic forward Euler integration is performed on the altitude error to add up the integrated error and a gain is applied. One significant drawback of integral control is integrator wind up which can result in significant overshoot behavior in the controlled system. Two measures are taken in the controller to avoid this. First, integral control is only used when the aircraft is within 30m of the desired target altitude. This is achieved by manually setting the integrated error to zero when the aircraft is outside this range. Thus, the integrator is reset any time the aircraft leaves this envelope. Resetting the integrator has no practical effect on performance in these conditions because the proportional controller will saturate (command the maximum possible pitch) in these conditions; additional pitch commanded by the integrator would have no effect. However, resetting the error prevents a large integrated error from building up in the initial stages of a mission while the aircraft is traveling to the desired path. The second step taken to prevent significant overshoot related to wind-up is to clear the integrated error (by setting it to zero) when the desired path is nearly flat. In these situations, the PD elements of the controller provide good performance without the integral element; this prevents the integral control from causing an overshoot at the top of a climbing section of a path.
 
 The derivative control term applies a gain to the difference between the current and desired climb rates.  This gain helps to damp the behavior commanded from the PI terms. The current climb rate is directly available from the aircraft state. The desired climb rate is computed by predicting the future state of the aircraft using a simple forward Euler approximation and then calling the guidance control function on that state to obtain the desired altitude at that future time. The difference between this feed-forward desired altitude and the current desired altitude is then divided by the small time delta over which the state was integrated.
 
 A further change made in the altitude control strategy was to increase the saturation pitch angle values to $\pm$ 30 degrees in order to achieve sufficient climb and descent rates on complex paths.
 
+\subsubsection{Throttle Controller}
 To command throttle, a simple proportional control on the airspeed is augmented with a feed forward from the sine of the pitch angle. As the aircraft pitches up, gravity begins to oppose the thrust force of the aircraft. The gravity force along the body $x$ axis is proportional to the sine of the pitch angle. By commanding extra throttle with a gain applied to the sine of the pitch angle, the aircraft applies additional throttle before the airspeed decays due to climb initiation.
 
+\subsubsection{Roll Controller}
 The roll angle is commanded in a similar manner to the throttle. A feed forward roll is calculated from the requirement that the aircraft be rolled to direct a component of the lift force toward the center of the desired turn sufficient to achieve the correct turn rate. This feed-forward term is supplemented by a proportional gain applied to the difference between the current and desired turn rates. The turn rate cannot be easily measured so the yaw rate is used instead. In slowly varying wind conditions, these rates will be similar, so the yaw rate is a reasonable substitute for the true turn rate. In more complex wind environments, the turn rate could potentially be determined by filtering the turn angle data but in most cases the yaw rate is likely superior to filtering the derivative of noisy turn angle data. The yaw rate is determined by multiplying the aircraft body frame to global inertial frame rotation matrix by the angular velocity of the aircraft. Since the yaw rate is the rotation rate about the global frame $z$ axis, simply taking the third element of the resulting vector gives the yaw rate. The yaw rate is also used in the feed-forward state calculation used by the pitch controller.
 
+\subsubsection{Conversion to RC Channel Commands}
 Once the desired angles are determined, each angle is converted to an RC channel command. These commands are determined based on the channel limits in the aircraft parameter files, then translating these limits to the saturation limits of the aircraft such that a maximum RC command yields the saturation limit of the input. For example, applying a command value of 2000 to RC channel 1 requests 65 degrees of roll.  Saturation is applied to the RC commands to keep them within the limits before they are passed into the FBWA mode, even though saturation is also applied in the aircraft simulation. This limiting action avoids a crash that can occur if very large commands are passed.
 
+\subsubsection{Internal Autopilot Functions}
 Once a command is passed to the FBWA mode, the autopilot uses its own internal PID control loops to generate the appropriate RC servo commands. The gains for these controls are set to a default which provides stable but very poor control. In order to improve performance, these gains must be tuned. This tuning was conducted using the autotune function of the Pixhawk with a custom Python script which commanded a series of very hard roll and pitch commands required by the autotune mode to select the gains. Two autotune iterations were run to generate the gains used in simulation. While autotune gains are not as good as those that are refined by manual tuning, the limitations of the available input devices into the SITL simulation made manual tuning impractical.
 
+\subsubsection{Reliance on Trim States}
 In order to set up the control laws, the trim state of the aircraft was needed, specifically trim pitch and trim throttle conditions (as trim roll for an undamaged symmetric aircraft should be zero). These states were determined by passing various simple commands to the aircraft and attempting to achieve steady level flight at the desired airspeed. Given the input limitations, trimming proved challenging and the final values selected provided adequate performance, but likely differ significantly from the true values for a real aircraft.
 
 \section{MATLAB Simulation Results}
@@ -77,6 +84,7 @@ The Park algorithm was validated using several different ellipses and starting p
 \centerfig{figures/ParkSimulink.pdf}{park_simulink}{MATLAB Park Algorithm Simulink Block Diagram} 
 \sidebyside{figures/park_tilt_ellipse_path-crop.pdf}{park_ellipse}{Quality of Aircraft Tracking Over a Tilted Elliptical Flight Path}
 {figures/park_tilt_ellipse_error-crop.pdf}{park_ellipse_error}{Off-Track Error While Tracking a Tilted Elliptical Flight Path}
+
 \section{Architecture Block Diagrams}
 Our guidance code is implemented at a high level, running aboard the supervisory computer on-board the aircraft, as shown in \Figure{sys-arch}. Control over our guidance code is accomplished via the WiFi link to the onboard computer, while the guidance code communicates via MAVLink to the Pixhawk autopilot. From the autopilot's perspective, the guidance code is simply another MAVLink-compliant message client. 
 \centerfig{figures/System-Architecture.pdf}{sys-arch}{Overall System Architecture}
@@ -141,14 +149,11 @@ The guidance and control algorithms are implemented entirely on the supervisory 
 
 \centerfig{figures/Controller_Diagram.png}{soft-arch}{Guidance Code Architecture}
 
-\subsubsection{Initilization}
+\subsubsection{Initialization}
 
+The control script first sets the pulse width modulation (PWM) limits of the RC override for the bank angle, pitch angle, and throttle commands in FBWA mode. The PWM limits and the corresponding physical limits are shown in \tableref{pwm_limits}.
 
-The control script first sets the pulse width modulation (PWM) limits of the RC override for the bank angle, pitch angle, and throttle commands in FBWA mode. The PWM limits and the corresponding physical limits are shown in \ref{table:RCval}.
-
-\begin{center}
-\begin{tabular}{ l| c | c | c | c| c | c}
-\label{table:RCval}
+\newtable{pwm_limits}{ l| c | c | c | c| c | c}{RC PWM Limits}{
 	
      RC Channel & $RC_{min}$ & $RC_{zero}$ & $RC_{max}$ & Min. Value & Zero Value & Max. Value \\
     \hline \hline
@@ -160,17 +165,11 @@ The control script first sets the pulse width modulation (PWM) limits of the RC 
     
     Throttle (RC3) & 1000 & 1500 & 2000 & $0\%$ & $50\%$ & $100\%$ \\
     \hline
+}
 
+Initially, the gain values on the pitch and roll servos resulted in very poor performance of the altitude and roll angle controllers. The Pixhawk's AUTOTUNE mode was used to achieve appropriate gains for the aileron and the elevator, resulting in the values seen in \tableref{servogains}. The process for using AUTOTUNE is discussed in the SITL Simulation Results section.
 
-\end{tabular}
-\end{center}
-
-Initially, the gain values on the pitch and roll servos resulted in very poor performance of the altitude and roll angle controllers. The Pixhawk's AUTOTUNE mode was used to achieve appropriate gains for the aileron and the elevator, resulting in the values seen in \ref{table:servogains}. The process for using AUTOTUNE is discussed in the SITL Simulation Results section.
-
-\begin{center}
-\begin{tabular}{ l| c | c }
-\label{table:servogains}
-	
+\newtable{servogains}{ l| c | c }{Servo Gain Values}{	
       & Roll to Servo & Pitch to Servo \\
     \hline \hline
     $K_P$ & 1.961 & 3.321\\
@@ -181,18 +180,14 @@ Initially, the gain values on the pitch and roll servos resulted in very poor pe
     
     $K_D$ & 0.137 & 0.232 \\
     \hline
-
-
-\end{tabular}
-\end{center}
-
+}
 
 Finally, the gains for the altitude controller, speed controller, and turn rate controller are set. The altitude controller uses proportional, integral and derivative (PID) control with climb rate feed forward. The speed controller and turn rate controller use proportional control with a feed-forward term.
-The aircraft trim condition was then set to the trim pitch angle $\theta_{trim} = 0.989^\circ$ and the trim throttle $T_{trim} = 1230\text{ } (23\%)$. The simulation is initiated at a latitude of $40.1447601^\circ$, a longitude of $-105.2435532^\circ$, and an altitude of $ 1680.38$ meters. Once the RC limits and controller gains are set, the guidance script then changes the autopilot mode to fly-by-wire-a (FBWA) to begin tracking the desired path.
+The aircraft trim condition was then set to the trim pitch angle $\theta_{trim} = 0.989^\circ$ and the trim throttle $T_{trim} = 1230\text{ } (23\%)$. The simulation is initiated at a latitude of $40.1447601^\circ$, a longitude of $-105.2435532^\circ$, and an altitude of $ 1680.38$ meters. Once the RC limits and controller gains are set, the guidance script then changes the autopilot mode to fly-by-wire-A (FBWA) to begin tracking the desired path.
 
 \subsubsection{Coordinate Transformation}
 
-A critical aspect of the guidance logic is knowledge of the aircraft's position and velocity in the same frame that the desired path is described in. This requires converting the latitude $\lambda$, longitude $\Phi$, and altitude $h$ coordinates provided by the aircraft's GPS receiver to north-east-down coordinate frame centered at the origin of the desired path provided in the CSV file. The algorithm described by in Reference "Conversion of Geodetic Coordinates to the Local Tangent Plane" is used to convert geodetic coordinates to earth-centered-earth-fixed (ECEF) and then translating the coordinates to a local north-east down frame. First, the ellipsoid flatness of the Earth is $f=1/298.257223563$ and the eccentricity is calculated as
+A critical aspect of the guidance logic is knowledge of the aircraft's position and velocity in the same frame that the desired path is described in. This requires converting the latitude $\lambda$, longitude $\Phi$, and altitude $h$ coordinates provided by the aircraft's GPS receiver to north-east-down coordinate frame centered at the origin of the desired path provided in the CSV file. The algorithm described in the reference "Conversion of Geodetic Coordinates to the Local Tangent Plane" is used to convert geodetic coordinates to earth-centered-earth-fixed (ECEF) coordinates and then translating to a local north-east down frame. First, the ellipsoid flatness of the Earth is $f=1/298.257223563$ and the eccentricity is calculated as
 \begin{equation}
 e=\sqrt{f(2f)}=8.18\times10^{-2}
 \end{equation}
@@ -258,7 +253,7 @@ The heart of the control and guidance logic implemented in DroneAPI is the nonli
 
 \centerfig{figures/Park_Algorithm_Diagram.png}{park}{Nonlinear Guidance Logic Diagram}
 
-First, the closest point on the desired path to the aircraft is determined.If the closest point is greater than $L_1$, then the closest point is taken as the reference point. Otherwise, the algorithm steps along the desired path to find the point that is closest to $L_1$ distance away, which is taken as the reference point. An $L_1$ value of 168 meters was used. The $L_1$ vector is then formed in two dimensions as
+First, the closest point on the desired path to the aircraft is determined. If the closest point is greater than $L_1$, then the closest point is taken as the reference point. Otherwise, the algorithm steps along the desired path to find the point that is closest to $L_1$ distance away, which is taken as the reference point. An $L_1$ value of 168 meters was used. The $L_1$ vector is then formed in two dimensions as
 
 \begin{equation}
 	L_1 = 
@@ -273,7 +268,7 @@ First, the closest point on the desired path to the aircraft is determined.If th
     \end{pmatrix}
 \end{equation}
 
-Next, the angle $\eta$ between the aircrafts heading and the L1 vector is determined by
+Next, the angle $\eta$ between the aircrafts heading and the $L_1$ vector is determined by
 
 \begin{equation}
 	\eta = \arctan{\frac{L_{1,y}}{L_{1,x}}} - \chi
@@ -344,19 +339,15 @@ RC1_{cmd} = 50*\phi_{cmd}*(RC1_{max} - RC1_{min})/\phi_{lim} + RC1_{zero}
 
 \subsubsection{Altitude Controller}
 
-The guidance logic obtains the desired altitude $h_{des}$ of the aircraft directly from the z-component in the CSV file describing the desired path. This value is then passed to the altitude controller implemented in the DroneAPI script. The altitude controller uses PID control with a feed-forward term on the pitch. The gains are shown in \ref{table:alt_gains}.
-\begin{center}
-\begin{tabular}{ l| c | r}
-\label{table:alt_gains}
-	
+The guidance logic obtains the desired altitude $h_{des}$ of the aircraft directly from the z-component in the CSV file describing the desired path. This value is then passed to the altitude controller implemented in the DroneAPI script. The altitude controller uses PID control with a feed-forward term on the pitch. The gains are shown in \tableref{alt_gains}.
+\newtable{alt_gains}{ l| c | r}{Altitude Gains}{
+
     $K_{P,\theta}$ & $K_{I,\theta}$ & $K_{D,\theta}$ \\
     \hline \hline
     0.3 & 0.03 & 0.6 \\
     \hline
+}
 
-
-\end{tabular}
-\end{center}
 The climb-rate feed-forward term is calculated by predicting the aircraft's future state based upon the current position and velocity as
 
 \begin{equation}
@@ -424,26 +415,6 @@ In order to provide state information necessary for our implementation of the Pa
 	\item \textit{pitchspeed}, \textit{yawspeed}, and \textit{rollspeed}: The angular rate information was necessary to assist the command translation module in generating appropriate RC commands.
 
 \end{enumerate}
-\hl{
-%Apparently the highlight environment screws with page numbering...
-
-L1 provides guidance logic, PID for everything else for alt/turn rate
-
-L1 formular that produces a value for a given state: reference values
-
-Controllers actually make the reference values track
-
-Why not FBWB? (Alt controller was garbage)
-
-Lat/lon converter
-
-used autotune to find gains
-
-How did we find trim states?
-
-Used fbwb mode and jsbsim to extract trim states from sim RC output values
-
-}
 
 \section{SITL Simulation Results}
 Several SITL simulation results are included, starting the aircraft from a different initial position. Each results concludes with the aircraft reaching the path. The tracking results are from the entire telemetry file, including an initial portion where the aircraft was travelling to the starting position, at which point the guidance controller was engaged. The error plots are limited to the simulation results where the aircraft has acquired the path.
@@ -456,12 +427,12 @@ Several SITL simulation results are included, starting the aircraft from a diffe
 \subsection{Start: Above and Outside The Chip}
 \centerfig{figures/above_outside_chip_path-crop.pdf}{above_outside_chip}{Tracking performance starting above and outside the chip}
 \centerfig{figures/above_outside_chip_path_error-crop.pdf}{above_outside_chip_error}{Off-Track error, starting above and outside the chip}
-
+\subsection{Discussion of SITL Results}
+Reviewing the tracking results, it appears that the Park algorithm is capable of tracking the potato chip path within several meters. In the off-track error plots, one can see a periodic increase in the error corresponding to the highest elevations of the potato chip desired path. This error pattern is visible across each of the test runs.
 \subsection{Autotune}
-The default gains for the roll and pitch to servo actuations present in the simulation resulted in poor tracking performance of the desired trajectory. To determine the gains required for good tracking performance, the autopilot's 'AUTOTUNE' mode was used. A Python script was written to command a series of roll-left and roll-right commands followed by a series of pitch up and pitch down commands. 'AUTOTUNE' mode, as the name suggests, modifies the servo gains during flight to achieve a well-damped response to these roll and pitch motions. The resulting gains were then extracted from the autopilot parameters, and the process was repeated for these new gains. 
+The default gains for the roll and pitch to servo actuations present in the simulation resulted in poor tracking performance of the desired trajectory. To determine the gains required for good tracking performance, the autopilot's 'AUTOTUNE' mode was used. A Python script was written to command a series of roll-left and roll-right commands followed by a series of pitch up and pitch down commands. 'AUTOTUNE' mode, as the name suggests, modifies the servo gains during flight to achieve a well-damped response to these roll and pitch motions. The resulting gains were then extracted from the autopilot parameters, and the process was repeated for these new gains; the intermediate and final values are shown in \tableref{autotune}.
 
-\begin{center}
-\begin{tabular}{ l| c | c}
+\newtable{autotune}{ l| c | c}{Autotune-extracted Servo Gains}{
 	&Roll to Servo & Pitch to Servo \\
     
     
@@ -483,39 +454,42 @@ The default gains for the roll and pitch to servo actuations present in the simu
     \hline
     $K_D$ & 0.137 & 0.232
 
-
-\end{tabular}
-\end{center}
+}
 
 Note that these gains resulted in good performance for the simulated vehicle. The gains should be tuned in a similar fashion during actual flight tests.
 
 \subsection{Lost Communications}
 In simulation, the \textit{rssi} field is set to 0; we were able to verify the correct performance of a proof-of-concept implementation of the lost comm strategy. In simulation, the aircraft glides to the ground. This section would require additional verification with the RC remote and physical system before integrating onto an airframe.
 \section{Recommendations}
-\hl{
-Difficulties in controlling physical aircraft
+Several practical implementation challenges were encountered during development of the path following controller in a open-source SITL environment.
+\subsection{Aerodynamics Model}
+The aircraft loaded into JSBSim engine underlying the APM SITL simulation is a Rascal 110 model aircraft. However, neither the aerodynamic properties nor plant models were available to perform initial controller testing in a more controlled software environment. This forced our team to develop and tune outer-loop controllers with a nonlinear plant in a complete flight dynamics simulator. To improve outer-loop control when using FBWA mode, AUTOTUNE proved very useful in providing rough gains for the inner-loop controls that manage bank angle and pitch. Although not as ideal as flying the actual aircraft and tuning while in the air, the AUTOTUNE mode satisfactorily improved the performance of AUTO mode. The STABILIZE and FBWB modes were used to obtain a trim pitch and throttle setting for the aircraft which also helped improve gain tuning.
+\subsection{Wind Model}
+ Our team was also not able to determine how to disable wind in the simulator. This wind was based on a turbulence algorithm that varied magnitude and heading as function of the aircraft airspeed and altitude. Since our controller logic did not contain any explicit disturbance rejection, this wind added challenges to creating an optimal baseline for gain tuning. In a sense, our controller contains a rough estimate of disturbance rejection by tuning the gains about the random wind distribution. However, a more optimal controller may be possible if tuned without wind initially.
 
-Having well-tuned gains for the aircraft - autotune helps, but need some flight testing to determine real values
+\subsection{Use of FBWB Mode}
+The FBWB mode was pursued initially for its ability to automatically hold altitude commands. Upon further investigation of the logic behind the altitude controller, it was determined that the FBWB mode is a poor choice for path following applications. The altitude controller is slow at climbing and descending, making it a poor choice for 3D path tracking.  It is strongly recommended to implement the path following controller in FBWA mode or MANUAL mode only.
 
-Learning curve for Python?
+\subsection{Evaluation of DroneAPI}
+DroneAPI proved to be an able platform to implement a path following controller. Modifying the code to access additional telemetry was a simple task and implementing the script in Python was simple and easy to debug. Although an implementation in firmware (C++) would certainly yield higher controller performance, the ability to avoid breaking C++ inter-dependencies in the APM source code was useful. Additionally, the APM source was not required to attempt different controller techniques and therefore only the APM binaries are needed for controller testing. However there still exists a few quirks in the DroneAPI script as the project is still in its infancy; these quirks relate to multithreading and cross-thread data access. The SITL APM module does not return ACKs for commands sent through MAVLink, and thus also for DroneAPI. Therefore, if you set a parameter in your script (rather than hardcoding it to a file and loading via the virtual EEPROM), then DroneAPI will stall for approximately two seconds until a timeout occurs. The parameter is still set, but this delay caused a significant challenge to quick fix testing in the controller code. The DroneAPI project lead was made aware of this issue, and certain lines were commented out to prevent the timeout loop from executing as an interim solution.
 
-Having controller logically so far away from actuator control
--too much abstraction?
--adding latency?
--flexibility vs latency?
+\subsection{Use of APM Planner 2.0}
+APM Planner 2.0 is an excellent graphical interface tool to view SITL data during testing. However, the application is still very buggy and has a few quirks. These bugs have been made aware to the lead developers via online forums. Through testing, QGroundControl, a branch of APM Planner 1.0 is even less stable and less compatible with APM SITL, and should be avoided.
 
-Reading CSV file once, saving in RAM for future loops
+\subsection{Choice of Linux Distribution}
+The operating system that presented the least number of issues loading all the required APM SITL packages was Ubuntu. This is because Ubuntu is a relatively package-laden operating system that is easily supported by developers. Python 2.7 is pre-installed with the required packages, and minimizes the amount of time the user must spend installing missing dependencies. The operating system is also the target for APM Planner, APM SITL, and DroneAPI tutorials, making them trivial to follow. Given that each of the components utilizes common components, using alternative Linux distributions does not pose a challenge for a sufficiently knowledgeable user.
 
-Rationale for not making firmware mods
- - not customized for a particular autopilot
- - Limits programming knowledge to Python needed (platform independent)
- - implement via MAVlink script w/o DroneAPI 
- 
-Disturbance rejection - wind model,  
- }
+\subsection{Nonlinear Paths}
+Our controller logic required extensive trial and error testing to determine the appropriate controller type for the path following problem. It was determined that PID controllers were required for both bank angle and pitch control because our path was not linear. This meant that proportional-derivative control would not be suitable to obtain a near-zero steady state error. However, as discussed earlier, this meant that integrator wind-up would need to be addressed, particularly at the apexes of the desired path.
 
+\section{References}
+\textit{Conversion of Geodetic coordinates to the Local Tangent Plane}, Portland State Aerospace Society, Version 2.01, URL: \url{http://psas.pdx.edu/CoordinateSystem/Latitude\_to\_LocalTangent.pdf} [cited 23 October 2014].
+
+Park., S., Deyst, J., and How, J. P., \textit{A New Nonlinear Guidance Logic for Trajectory Tracking}, AIAA Guidance, Navigation and Control Conference, 2004.
+\newpage
 \section{Appendix A: Code}
-\python{Controller.py: Main controller implementation}{../controller.py}
-\python{Guide.py: Implementation of Nonlinear Guidance Code}{../Guide.py}
+\python{Controller.py: Main controller implementation}{../controller/controller.py}
+\newpage
+\python{Guide.py: Implementation of Nonlinear Guidance Code}{../controller/L1Guide.py}
 
 \end{document}
