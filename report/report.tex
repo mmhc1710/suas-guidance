@@ -164,10 +164,11 @@ The control script first sets the pulse width modulation (PWM) limits of the RC 
 \end{tabular}
 \end{center}
 
-Initially, the gain values on the pitch and roll servos resulted in very poor performance of the altitude and roll angle controllers. The Pixhawk's AUTOTUNE mode was used to achieve appropriate gains for the aileron and the elevator, resulting in the values seen in TABLE. The process for using AUTOTUNE is discussed in the SITL Simulation Results section.
+Initially, the gain values on the pitch and roll servos resulted in very poor performance of the altitude and roll angle controllers. The Pixhawk's AUTOTUNE mode was used to achieve appropriate gains for the aileron and the elevator, resulting in the values seen in \ref{table:servogains}. The process for using AUTOTUNE is discussed in the SITL Simulation Results section.
 
 \begin{center}
 \begin{tabular}{ l| c | c }
+\label{table:servogains}
 	
       & Roll to Servo & Pitch to Servo \\
     \hline \hline
@@ -185,27 +186,8 @@ Initially, the gain values on the pitch and roll servos resulted in very poor pe
 \end{center}
 
 
-Finally, the gains for the altitude controller, speed controller, and turn rate controller are set. The altitude controller uses proportional, integral and derivative (PID) control with climb rate feed forward. The speed controller and turn rate controller use proportional control with a feed-forward term. The gains for each are displayed in Table
-
-\begin{center}
-\begin{tabular}{ l| c | c }
-	
-      & Roll to Servo & Pitch to Servo \\
-    \hline \hline
-    $K_P$ & 1.961 & 3.321\\
-    \hline
-    
-    $K_I$ & 0.133 & 0.207 \\
-    \hline
-    
-    $K_D$ & 0.137 & 0.232 \\
-    \hline
-
-
-\end{tabular}
-\end{center}
-
-Once the RC limits and controller gains are set, the guidance script then changes the autopilot mode to fly-by-wire-a (FBWA).
+Finally, the gains for the altitude controller, speed controller, and turn rate controller are set. The altitude controller uses proportional, integral and derivative (PID) control with climb rate feed forward. The speed controller and turn rate controller use proportional control with a feed-forward term.
+The aircraft trim condition was then set to the trim pitch angle $\theta_{trim} = 0.989^\circ$ and the trim throttle $T_{trim} = 1230\text{ } (23\%)$. The simulation is initiated at a latitude of $40.1447601^\circ$, a longitude of $-105.2435532^\circ$, and an altitude of $ 1680.38$ meters. Once the RC limits and controller gains are set, the guidance script then changes the autopilot mode to fly-by-wire-a (FBWA) to begin tracking the desired path.
 
 \subsubsection{Coordinate Transformation}
 
@@ -245,7 +227,7 @@ The ECEF coordinates are then translated to the local coordinate frame by subtra
 \end{equation}
    
    
-   Then $\bold{x\prime}$ is transformed into north-east-down coordinates by the rotation matrix $R_e^t$
+   Then $\bold{x\prime}$ is transformed into esat-north-up coordinates by the rotation matrix $R_e^t$
    
    \begin{equation}
    	R_e^t = 
@@ -275,7 +257,7 @@ The heart of the control and guidance logic implemented in DroneAPI is the nonli
 
 \centerfig{figures/Park_Algorithm_Diagram.png}{park}{Nonlinear Guidance Logic Diagram}
 
-First, the closest point on the desired path to the aircraft is determined.If the closest point is greater than $L_1$, then the closest point is taken as the reference point. Otherwise, the algorithm steps along the desired path to find the point that is closest to $L_1$ distance away, which is taken as the reference point. The $L_1$ vector is then formed in two dimensions as
+First, the closest point on the desired path to the aircraft is determined.If the closest point is greater than $L_1$, then the closest point is taken as the reference point. Otherwise, the algorithm steps along the desired path to find the point that is closest to $L_1$ distance away, which is taken as the reference point. An $L_1$ value of 168 meters was used. The $L_1$ vector is then formed in two dimensions as
 
 \begin{equation}
 	L_1 = 
@@ -403,7 +385,7 @@ RC2_{cmd} = -100*\theta_{cmd}(RC2_{max} - RC2_{zero})/(-\theta_{max}) + RC2_{zer
 
 \subsubsection{Speed Controller}
 
-The speed of the aircraft is desired to remain constant throughout the manuever, with a desired speed of $v_{des} = 22 m/s$. In order to achieve this, a proportional controller is implemented with a feed-forward term on the pitch rate. The proportional gain for the throttle is $K_{P,T} = 4.0$ and the feed-forward gain is $K_{FF,T} = 3.0$. The throttle command $T_{cmd}$ is given by
+The speed of the aircraft is desired to remain constant throughout the manuever, with a desired speed of $v_{des} = 22 m/s$. In order to achieve this, a proportional controller is implemented with a feed-forward term on the pitch rate. The proportional gain for the throttle is $K_{P,T} = 4.0$ and the feed-forward gain is $K_{FF,T} = 350.0$. The throttle command $T_{cmd}$ is given by
 
 \begin{equation}
 T_{cmd} = K_{P,T}(v_{des} - v_{airspeed}) + K_{FF,T}\sin{\theta - \theta_{trim}}
@@ -424,7 +406,7 @@ RC3_{cmd} = 10*T_{cmd} + T_{trim}
 The RC override commands provided by the individual controllers discussed previously are then saturated to the PWM limits to avoid sending out of range RC values to the Pixhawk.
 
 \begin{equation}
-	RC3_{cmd} = 
+	RCi_{cmd} = 
 	\begin{cases}
 		RCi_{max} & \text{if } RCi_{cmd} > RCi_{max}\\
         RCi_{min} & \text{if } RCi_{cmd} < RCi_{min}\\
@@ -432,7 +414,6 @@ The RC override commands provided by the individual controllers discussed previo
      \end{cases}
      \text{      for i=(1,2,3)}
 \end{equation}
-
 
 \subsubsection{DroneAPI Modifications}
 In order to provide state information necessary for our implementation of the Park algorithm, the DroneAPI code had to be modified. The default ArduPilot firmware provides a rich telemetry set, but several key parameters are not exposed to modules running within the DroneAPI framework. Minor changes were required to expose the following parameters:
@@ -460,7 +441,6 @@ How did we find trim states?
 
 Used fbwb mode and jsbsim to extract trim states from sim RC output values
 
-Difference in pitch trim vs elevator deflection - used stabilize mode instead
 }
 
 \section{SITL Simulation Results}
@@ -474,10 +454,38 @@ Several SITL simulation results are included, starting the aircraft from a diffe
 \subsection{Start: Above and Outside The Chip}
 \centerfig{figures/above_outside_chip_path-crop.pdf}{above_outside_chip}{Tracking performance starting above and outside the chip}
 \centerfig{figures/above_outside_chip_path_error-crop.pdf}{above_outside_chip_error}{Off-Track error, starting above and outside the chip}
-\hl{
-Gain tuning results
-CPU loading from nav results - is it feasible to implement on the ODroid
-}
+
+\subsection{Autotune}
+The default gains for the roll and pitch to servo actuations present in the simulation resulted in poor tracking performance of the desired trajectory. To determine the gains required for good tracking performance, the autopilot's 'AUTOTUNE' mode was used. A Python script was written to command a series of roll-left and roll-right commands followed by a series of pitch up and pitch down commands. 'AUTOTUNE' mode, as the name suggests, modifies the servo gains during flight to achieve a well-damped response to these roll and pitch motions. The resulting gains were then extracted from the autopilot parameters, and the process was repeated for these new gains. 
+
+\begin{center}
+\begin{tabular}{ l| c | c}
+	&Roll to Servo & Pitch to Servo \\
+    
+    
+    \hline 
+    \hline \hline
+    Run 1 & & \\
+    \hline \hline
+    $K_P$ & 1.894 & 2.959 \\
+    \hline
+    $K_I$ & 0.175 & 0.175 \\
+    \hline
+    $K_D$ & 0.133 & 0.207 \\
+    \hline \hline
+    Run 2 & & \\
+    \hline \hline
+    $K_P$ & 1.961 & 3.321 \\
+    \hline
+    $K_I$ & 0.133 & 0.207 \\
+    \hline
+    $K_D$ & 0.137 & 0.232
+
+
+\end{tabular}
+\end{center}
+
+Note that these gains resulted in good performance for the simulated vehicle. The gains should be tuned in a similar fashion during actual flight tests.
 
 \subsection{Lost Communications}
 In simulation, the \textit{rssi} field is set to 0; we were able to verify the correct performance of a proof-of-concept implementation of the lost comm strategy. In simulation, the aircraft glides to the ground. This section would require additional verification with the RC remote and physical system before integrating onto an airframe.
