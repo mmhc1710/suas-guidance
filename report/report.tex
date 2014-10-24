@@ -137,14 +137,18 @@ Our guidance logic assumes that the aircraft is already in flight in the MANUAL 
 The lost communications plan allows our controller to command an aerodynamic termination in the event that signals from the RC radio are not received. The \textbf{DroneAPI} source was modified to present the \textit{rssi} field to client code, representing the received signal strength indication as measured by the Pixhawk autopilot. When the \textit{rssi} drops below a certain threshold, fly-by-wire 'A' mode is engaged, with a throttle override set to the minimum value. The controller then stops sending any additional commands, but stays on-line to monitor whether communications is re-established. If the RC link is re-established, the code can disengage the aerodynamic termination override and set the autopilot back to 'MANUAL' mode, where the RC radio commands are passed through to the control surface servos.
 \subsection{Software Sections}
 
-The guidance and control algorithms are implemented entirely on the supervisory computer communicating to the Pixhawk and are written in Python 2.7. The supervisory computer is running a MAVProxy instance running the DroneAPI module to parse the telemetry information returned via the MAVLink protocol and to send RC override commands. The algorithm uses the fly-by-wire 'A' (FBWA) mode to send RC override commands for the bank angle, pitch angle, and throttle which are generally sent directly from the RC transmitter. \hl{Figure} displays a flow diagram of the logic implemented in the algorithm. 
+The guidance and control algorithms are implemented entirely on the supervisory computer communicating to the Pixhawk and are written in Python 2.7. The supervisory computer is running a MAVProxy instance running the DroneAPI module to parse the telemetry information returned via the MAVLink protocol and to send RC override commands. The algorithm uses the fly-by-wire 'A' (FBWA) mode to send RC override commands for the bank angle, pitch angle, and throttle which are generally sent directly from the RC transmitter. \Figure{soft-arch} displays a flow diagram of the logic implemented in the algorithm. 
 
-\subsubsection{Initialization}
+\centerfig{figures/Controller_Diagram.png}{soft-arch}{Guidance Code Architecture}
 
-The control script first sets the pulse width modulation (PWM) limits of the RC override for the bank angle, pitch angle, and throttle commands in FBWA mode. The PWM limits and the corresponding physical limits are shown in \tableref{rc_limits}.
+\subsubsection{Initilization}
 
-\newtable{rc_limits}{ |l| c | c | c | c| c | c|}{RC Channel Limits}{
-	\hline
+
+The control script first sets the pulse width modulation (PWM) limits of the RC override for the bank angle, pitch angle, and throttle commands in FBWA mode. The PWM limits and the corresponding physical limits are shown in Table.
+
+\begin{center}
+\begin{tabular}{ l| c | c | c | c| c | c}
+	
      RC Channel & $RC_{min}$ & $RC_{zero}$ & $RC_{max}$ & Min. Value & Zero Value & Max. Value \\
     \hline \hline
     Bank angle (RC1) & 1000 & 1500 & 2000 & $-65^{\circ}$ & $0^{\circ}$ & $65^{\circ}$\\
@@ -155,12 +159,16 @@ The control script first sets the pulse width modulation (PWM) limits of the RC 
     
     Throttle (RC3) & 1000 & 1500 & 2000 & $0\%$ & $50\%$ & $100\%$ \\
     \hline
-}
 
-Initially, the gain values on the pitch and roll servos resulted in very poor performance of the altitude and roll angle controllers. The Pixhawk's AUTOTUNE mode was used to achieve appropriate gains for the aileron and the elevator, resulting in the values seen in \tableref{servo_gains}. The process for using AUTOTUNE is discussed in the SITL Simulation Results section.
 
-\newtable{servo_gains}{ |l| c | c |}{Servo Gains Utilized in Simulation}{
-	\hline
+\end{tabular}
+\end{center}
+
+Initially, the gain values on the pitch and roll servos resulted in very poor performance of the altitude and roll angle controllers. The Pixhawk's AUTOTUNE mode was used to achieve appropriate gains for the aileron and the elevator, resulting in the values seen in TABLE. The process for using AUTOTUNE is discussed in the SITL Simulation Results section.
+
+\begin{center}
+\begin{tabular}{ l| c | c }
+	
       & Roll to Servo & Pitch to Servo \\
     \hline \hline
     $K_P$ & 1.961 & 3.321\\
@@ -171,13 +179,17 @@ Initially, the gain values on the pitch and roll servos resulted in very poor pe
     
     $K_D$ & 0.137 & 0.232 \\
     \hline
-}
 
 
-Finally, the gains for the onboard altitude controller, speed controller, and turn rate controller are set. The altitude controller uses proportional, integral and derivative (PID) control with climb rate feed forward. The speed controller and turn rate controller use proportional control with a feed-forward term. The gains for each are displayed in \tableref{alt_speed_gains}.
+\end{tabular}
+\end{center}
 
-\newtable{alt_speed_gains}{| l| c | c |}{Onboard Altitude, Speed, and Turn Rate Gains}{
-	\hline
+
+Finally, the gains for the altitude controller, speed controller, and turn rate controller are set. The altitude controller uses proportional, integral and derivative (PID) control with climb rate feed forward. The speed controller and turn rate controller use proportional control with a feed-forward term. The gains for each are displayed in Table
+
+\begin{center}
+\begin{tabular}{ l| c | c }
+	
       & Roll to Servo & Pitch to Servo \\
     \hline \hline
     $K_P$ & 1.961 & 3.321\\
@@ -188,36 +200,136 @@ Finally, the gains for the onboard altitude controller, speed controller, and tu
     
     $K_D$ & 0.137 & 0.232 \\
     \hline
-}
 
-Once the RC limits and controller gains are set, the guidance script then changes the autopilot mode to fly-by-wire-A (FBWA).
+
+\end{tabular}
+\end{center}
+
+Once the RC limits and controller gains are set, the guidance script then changes the autopilot mode to fly-by-wire-a (FBWA).
 
 \subsubsection{Coordinate Transformation}
 
-A critical aspect of the guidance logic is knowledge of the aircraft's position and velocity in the same frame that the desired path is described in. This requires converting the latitude, longitude, and altitude coordinates provided by the aircraft's GPS receiver to north-east-down coordinate frame centered at the origin of the desired path provided in the CSV file. \hl{ The rotation matrix for converting}
+A critical aspect of the guidance logic is knowledge of the aircraft's position and velocity in the same frame that the desired path is described in. This requires converting the latitude $\lambda$, longitude $\Phi$, and altitude $h$ coordinates provided by the aircraft's GPS receiver to north-east-down coordinate frame centered at the origin of the desired path provided in the CSV file. The algorithm described by in Reference "Conversion of Geodetic Coordinates to the Local Tangent Plane" is used to convert geodetic coordinates to earth-centered-earth-fixed (ECEF) and then translating the coordinates to a local north-east down frame. First, the ellipsoid flatness of the Earth is $f=1/298.257223563$ and the eccentricity is calculated as
+\begin{equation}
+e=\sqrt{f(2f)}=8.18\times10^{-2}
+\end{equation}
 
+The distance from the surface to the z-axis along the ellipsoid normal is
+
+\begin{equation}
+N(\lambda)=\frac{a}{\sqrt{1-e^2\sin^2{\lambda}}}
+\end{equation}
+
+ECEF coordinates can then be caclulated as
+\begin{equation}
+x=(h+N)\cos{\lambda}\cos{\Phi} \\
+y=(h+N)\cos{\lambda}\sin{\Phi} \\
+z=(h+(1-e^2)N)\sin(\lambda)
+\end{equation}
+
+The ECEF coordinates are then translated to the local coordinate frame by subtracting the origin location $\bold{x_0}$ as
+
+\begin{equation}
+\bold{x\prime} = 
+	\begin{pmatrix}
+    	x \\
+        y \\ 
+        z \\
+    \end{pmatrix}
+    -
+    \begin{pmatrix}
+    	x_0 \\
+        y_0 \\ 
+        z_0 \\
+    \end{pmatrix}
+\end{equation}
+   
+   
+   Then $\bold{x\prime}$ is transformed into north-east-down coordinates by the rotation matrix $R_e^t$
+   
+   \begin{equation}
+   	R_e^t = 
+    	\begin{bmatrix}
+        -\sin{\Phi_0} & \cos{\Phi_0} & 0 \\
+        -\cos{\Phi_0}\sin{\lambda_0} & -\sin{\Phi_0}\sin{\lambda_0} & \cos{\lambda_0}\\
+        \cos{\Phi_0}\cos{\lambda_0} & \cos{\Phi_0}\sin{\lambda_0} & \sin{\lambda_0}\\
+        \end{bmatrix}
+    \end{equation}
+    
+    Coordinates in the east-north-up frame are then defined by
+    
+    \begin{equation}
+    \begin{pmatrix}
+    	e \\ 
+        n \\
+        u \\
+    \end{pmatrix}
+    =[R_e^t]\bold{x\prime}
+    \end{equation}
+    
+    A simple rotation is then required to transform into north-east-down coordinates.
 
 \subsubsection{Guidance Logic}
 
-The heart of the control and guidance logic implemented in DroneAPI is the nonlinear guidance algorithm for trajectory tracking described by Park et. al. 
+The heart of the control and guidance logic implemented in DroneAPI is the nonlinear guidance algorithm for trajectory tracking described by Park et. al. The flow diagram in \Figure{park} displays the logic implemented in software. 
 
+\centerfig{figures/Park_Algorithm_Diagram.png}{park}{Nonlinear Guidance Logic Diagram}
+
+First, the closest point on the desired path to the aircraft is determined.If the closest point is greater than $L_1$, then the closest point is taken as the reference point. Otherwise, the algorithm steps along the desired path to find the point that is closest to $L_1$ distance away, which is taken as the reference point. The $L_1$ vector is then formed in two dimensions as
+
+\begin{equation}
+	L_1 = 
+    \begin{pmatrix}
+    	x_{ref}\\
+        y_{ref}
+    \end{pmatrix}
+    -
+    \begin{pmatrix}
+    	x_{AC}\\
+        y_{AC}
+    \end{pmatrix}
+\end{equation}
+
+Next, the angle $\eta$ between the aircrafts heading and the L1 vector is determined by
+
+\begin{equation}
+	\eta = \arctan{\frac{L_{1,y}}{L_{1,x}}} - \chi
+\end{equation}
+
+The desired lateral accelaration is then determined by
+
+\begin{equation}
+	a_{s,cmd} = 2\frac{v^2}{L_1}\sin{\eta}
+    \end{equation}
+    
+    By relating this lateral acceleration to the centripital acceleration, the instantaneous radius of the required path is
+    
+    \begin{equation}
+    R = \frac{L_1}{2\sin{\eta}}
+    \end{equation}
+    
+    The desired turn rate is then found by
+    
+    \begin{equation}
+    \dot{\chi} = \frac{V}{R}
+    \end{equation}
 \subsubsection{Roll Angle Controller}
 
-The guidance logic described by Park outputs a desired turn rate $\dot{\chi}_{\text{des}}$ required to place the aircraft on the desired path. The turn rate controller uses proportional control on the error between desired and current turn rate with a feed forward term based on the aircraft velocity and desired turn rate. The proportional gain is $K_{P,\phi} = 13$  deg/(rad/s), and the feed-forward term is determined by:
+The guidance logic described by Park outputs a desired turn rate $\dot{\chi}_{des}$ required to place the aircraft on the desired path. The turn rate controller uses proportional control on the error between desired and current turn rate with a feed forward term based on the aircraft velocity and desired turn rate. The proportional gain is $K_{P,\phi} = 13.0$  deg/(rad/s), and the feed-forward term is determined by
 
 
 \begin{equation}
 	\phi_{FF} = \arctan{(\dot{\chi}_{des}*v_{airspeed}/g)}
 \end{equation}
 
-where $g=9.81 \frac{m}{s^2}$ is the acceleration due to gravity. The commanded bank angle is then determined by:
+where $g=9.81 m/s^2$ is the acceleration due to gravity. The commanded bank angle is then determined by
 
 \begin{equation}
 \label{eqn:rollcmd}
 	\phi_{cmd} = \phi_{FF} + K_{P,\phi}*(\dot{\chi} - \dot{\chi}_{des})
 \end{equation}
 
-The turn rate $\dot{\chi}$ is equal to the yaw rate $\dot{\psi}$ of the aircraft, and can be obtained by rotating the aircrafts angular velocity from the body frame to the inertial frame. The rotation matrix from the inertial frame to the body frame is a function of the pitch angle $\theta$, the roll angle $\phi$ and the yaw angle $\psi$ and is given by:
+The turn rate $\dot{\chi}$ is equal to the yaw rate $\dot{\psi}$ of the aircraft, and can be obtained by rotating the aircrafts angular velocity from the body frame to the inertial frame. The rotation matrix from the inertial frame to the body frame is a function of the pitch angle $\theta$, the roll angle $\phi$ and the yaw angle $\psi$ and is given by
 
 
 \begin{equation}
@@ -231,7 +343,7 @@ The turn rate $\dot{\chi}$ is equal to the yaw rate $\dot{\psi}$ of the aircraft
 \end{equation}
 
 
-The rotation matrix from body frame coordinates to inertial frame coordinates is obtained by the transposing $R_b^i$, thus the Euler angle rates are given by:
+The rotation matrix from body frame coordinates to inertial frame coordinates is obtained by the transposing $R_b^i$, thus the Euler angle rates are given by
 
 \begin{equation}
 	\begin{bmatrix}
@@ -239,26 +351,29 @@ The rotation matrix from body frame coordinates to inertial frame coordinates is
     \dot{\theta}\\
     \dot{\psi}
     \end{bmatrix}
-    =[R_i^b]^T\cdot \omega
+    =[R_i^b]^T*\omega
 \end{equation}
 
-The bank angle command calculated in Equation \eqref{eqn:rollcmd} is then translated into RC stick values as:
+The bank angle command calculated in Equation \eqref{eqn:rollcmd} is then translated into RC stick values as
 \begin{equation}
 RC1_{cmd} = 50*\phi_{cmd}*(RC1_{max} - RC1_{min})/\phi_{lim} + RC1_{zero}
 \end{equation}
 
 \subsubsection{Altitude Controller}
 
-The guidance logic obtains the desired altitude $h_{des}$ of the aircraft directly from the $z$-component in the CSV file describing the desired path. This value is then passed to the altitude controller implemented in the DroneAPI script. The altitude controller uses PID control with a feedforward term on the pitch. The gains are listed in \tableref{alt_gain}.
-
-\newtable{alt_gain}{ |l| c | r|}{Altitude Controller Gains}{
-	\hline
+The guidance logic obtains the desired altitude $h_{des}$ of the aircraft directly from the z-component in the CSV file describing the desired path. This value is then passed to the altitude controller implemented in the DroneAPI script. The altitude controller uses PID control with a feedforward term on the pitch. The gains are
+\begin{center}
+\begin{tabular}{ l| c | r}
+	
     $K_{P,\theta}$ & $K_{I,\theta}$ & $K_{D,\theta}$ \\
     \hline \hline
     0.3 & 0.03 & 0.6 \\
     \hline
-}
-The climb-rate feedforward term is calculated by predicting the aircraft's future state based upon the current position and velocity as:
+
+
+\end{tabular}
+\end{center}
+The climb-rate feedforward term is calculated by predicting the aircraft's future state based upon the current position and velocity as
 
 \begin{equation}
 X_{FF} = X_{AC} + v_{airspeed}*\cos{\chi}*\Delta t
@@ -268,19 +383,19 @@ Y_{FF} = Y_{AC} + v_{airspeed}*\sin{\chi}*\Delta t
 Z_{FF} = Z_{AC} + v_z*\Delta t
 \end{equation}
 
-The pitch angle commanded $\theta_{cmd}$ is given by:
+The pitch angle commanded $\theta_{cmd}$ is given by
 
 \begin{equation} \theta_{cmd} = K_{P,\theta}(h_{des} - h_{AC}) - K_{I,\theta}*h_{I,err} - K_{D,\theta}(v_z - \dot{h}_{des}) - \theta_{trim}
 \end{equation}
 
 
-The commanded pitch angle must then be converted into a PWM value to use the RC override command. For a positive commanded pitch angle, the RC override is determined by:
+The commanded pitch angle must then be converted into a PWM value to use the RC override command. For a positive commanded pitch angle, the RC override is determined by
 
 \begin{equation}
 RC2_{cmd} = -100*\theta_{cmd}(RC2_{zero} - RC2_{min})/(\theta_{max}) + RC2_{zero}
 \end{equation}
 
-For a negative commanded pitch angle, the RC override is determined by:
+For a negative commanded pitch angle, the RC override is determined by
 
 \begin{equation}
 RC2_{cmd} = -100*\theta_{cmd}(RC2_{max} - RC2_{zero})/(-\theta_{max}) + RC2_{zero}
@@ -288,13 +403,13 @@ RC2_{cmd} = -100*\theta_{cmd}(RC2_{max} - RC2_{zero})/(-\theta_{max}) + RC2_{zer
 
 \subsubsection{Speed Controller}
 
-The speed of the aircraft is desired to remain constant throughout the manuever, with a desired speed of $v_{des} = 22 m/s$. In order to achieve this, a proportional controller is implemented with a feed-forward term on the pitch rate. The proportional gain for the throttle is $K_{P,T} = 4$ and the feed-forward gain is $K_{FF,T} = 3$. The throttle command $T_{cmd}$ is given by:
+The speed of the aircraft is desired to remain constant throughout the manuever, with a desired speed of $v_{des} = 22 m/s$. In order to achieve this, a proportional controller is implemented with a feed-forward term on the pitch rate. The proportional gain for the throttle is $K_{P,T} = 4.0$ and the feed-forward gain is $K_{FF,T} = 3.0$. The throttle command $T_{cmd}$ is given by
 
 \begin{equation}
 T_{cmd} = K_{P,T}(v_{des} - v_{airspeed}) + K_{FF,T}\sin{\theta - \theta_{trim}}
 \end{equation}
 
-The commanded throttle is then converted to a RC override command as:
+The commanded throttle is then converted to a RC override command as
 
 \begin{equation}
 RC3_{cmd} = 10*T_{cmd} + T_{trim}
@@ -306,7 +421,7 @@ RC3_{cmd} = 10*T_{cmd} + T_{trim}
 \subsubsection{Saturation Limits}
 
 
-The RC override commands provided by the individual controllers discussed previously are then saturated to the PWM limits to avoid sending out of range RC values to the Pixhawk, according to:
+The RC override commands provided by the individual controllers discussed previously are then saturated to the PWM limits to avoid sending out of range RC values to the Pixhawk.
 
 \begin{equation}
 	RC3_{cmd} = 
@@ -317,6 +432,7 @@ The RC override commands provided by the individual controllers discussed previo
      \end{cases}
      \text{      for i=(1,2,3)}
 \end{equation}
+
 
 \subsubsection{DroneAPI Modifications}
 In order to provide state information necessary for our implementation of the Park algorithm, the DroneAPI code had to be modified. The default ArduPilot firmware provides a rich telemetry set, but several key parameters are not exposed to modules running within the DroneAPI framework. Minor changes were required to expose the following parameters:
