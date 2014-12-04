@@ -1,6 +1,6 @@
 #import vrpn
 import threading
-import vrpn_Tracker
+import vrpn
 import transformations
 import math
 
